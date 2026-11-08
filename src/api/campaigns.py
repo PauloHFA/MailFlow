@@ -22,6 +22,12 @@ from src.scheduler.windows import (
     compute_send_window,
     normalize_utc,
 )
+from src.scheduler.campaign_controls import (
+    InvalidCampaignTransition,
+    cancel_campaign as cancel_campaign_state,
+    pause_campaign as pause_campaign_state,
+    resume_campaign as resume_campaign_state,
+)
 
 router = APIRouter(prefix="/api/v1/campaigns", tags=["campaigns"])
 
@@ -175,3 +181,49 @@ def create_campaign(
             for schedule in created_schedules
         ],
     }
+
+
+def _load_campaign_or_404(session: Session, campaign_id: str) -> Campaign:
+    campaign = session.get(Campaign, campaign_id)
+    if campaign is None:
+        raise HTTPException(status_code=404, detail="Campaign not found.")
+    return campaign
+
+
+@router.post("/{campaign_id}/pause")
+def pause_campaign(
+    campaign_id: str,
+    session: Session = Depends(get_db),
+) -> dict[str, str]:
+    campaign = _load_campaign_or_404(session, campaign_id)
+    try:
+        pause_campaign_state(session, campaign)
+    except InvalidCampaignTransition as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    return {"id": campaign.id, "status": campaign.status}
+
+
+@router.post("/{campaign_id}/resume")
+def resume_campaign(
+    campaign_id: str,
+    session: Session = Depends(get_db),
+) -> dict[str, str]:
+    campaign = _load_campaign_or_404(session, campaign_id)
+    try:
+        resume_campaign_state(session, campaign)
+    except InvalidCampaignTransition as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    return {"id": campaign.id, "status": campaign.status}
+
+
+@router.post("/{campaign_id}/cancel")
+def cancel_campaign(
+    campaign_id: str,
+    session: Session = Depends(get_db),
+) -> dict[str, str]:
+    campaign = _load_campaign_or_404(session, campaign_id)
+    try:
+        cancel_campaign_state(session, campaign)
+    except InvalidCampaignTransition as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    return {"id": campaign.id, "status": campaign.status}

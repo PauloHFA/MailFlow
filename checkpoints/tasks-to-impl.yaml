@@ -5,10 +5,10 @@ metadata:
 
 summary:
   total_tasks: 25
-  completed_tasks: 13
-  in_progress_tasks: 1
-  pending_tasks: 11
-  completion_percentage: 52.0
+  completed_tasks: 17
+  in_progress_tasks: 0
+  pending_tasks: 8
+  completion_percentage: 68.0
 
 tasks:
   - task_id: "T001"
@@ -418,32 +418,151 @@ tasks:
       requirements: ["RF-05", "RN-08"]
       full_trace: "RF-05,RN-08 → Phase-3.2 → T013 → src/scheduler/windows.py,src/scheduler/dispatch.py"
   - task_id: "T014"
-    description: "Implement queued-message processing through the provider."
-    status: "in-progress"
+    description: "Implement persistent queued-message processing through the provider."
+    status: "completed"
     implementation:
       files_changed:
         - file: "src/worker.py"
           changes:
+            - change_type: "modified"
+              description: "Register persistent Celery message processing plus periodic retry and stale-claim recovery."
+        - file: "src/queue/tasks.py"
+          changes:
             - change_type: "added"
-              description: "Claim queued message, recheck suppression, render, send and persist outcome."
+              description: "Claim persisted messages, recheck suppression and campaign state, render and send through EmailProvider."
+        - file: "tests/integration/test_worker.py"
+          changes:
+            - change_type: "modified"
+              description: "Cover successful processing, suppression, temporary provider errors, permanent failures, and rate-limit deferral."
     verification:
       build_passed: true
       test_results:
-        command: "python -m pytest tests/integration/test_worker.py"
-        passed: 2
+        command: "python -m pytest tests/integration/test_worker.py tests/integration/test_queue.py"
+        passed: 8
         failed: 0
         skipped: 0
         failures: []
-      notes: "Basic send flow is implemented; rate limiting and retry policy remain pending in T015."
+      notes: "Persisted statuses, Celery beat recovery, and duplicate-task protection pass isolated database tests."
     upstream_trace:
       plan_item: "4.1"
-      requirements: ["RF-06", "RF-08", "RNF-02"]
-      full_trace: "RF-06,RF-08,RNF-02 → Phase-4.1 → T014 → src/worker.py (partial)"
+      requirements: ["RF-06", "RF-08", "RNF-01", "RNF-02"]
+      full_trace: "RF-06,RF-08,RNF-01,RNF-02 → Phase-4.1 → T014 → src/queue/tasks.py,src/worker.py"
+  - task_id: "T015"
+    description: "Enforce distributed rate limits, retries, and durable dead-letter handling."
+    status: "completed"
+    implementation:
+      files_changed:
+        - file: "src/queue/rate_limit.py"
+          changes:
+            - change_type: "added"
+              description: "Atomically reserve provider/domain per-second and UTC-daily quotas in Redis."
+        - file: "src/queue/retries.py"
+          changes:
+            - change_type: "added"
+              description: "Persist exponential retry timing, dispatch due retries, recover stale worker claims, and record exhausted/permanent failures."
+        - file: "src/db/models.py"
+          changes:
+            - change_type: "modified"
+              description: "Add campaign linkage, retry/claim timestamps, cancelled state, and durable dead-letter records."
+        - file: "migrations/versions/0003_reliable_queue.py"
+          changes:
+            - change_type: "added"
+              description: "Migrate retry state and dead-letter persistence."
+        - file: "tests/integration/test_queue.py"
+          changes:
+            - change_type: "added"
+              description: "Verify due retry dispatch, stale worker recovery, and dead-letter behavior."
+        - file: "tests/unit/test_queue_controls.py"
+          changes:
+            - change_type: "added"
+              description: "Verify exponential backoff and provider/domain quota boundaries."
+    verification:
+      build_passed: true
+      test_results:
+        command: "python -m pytest tests/integration/test_worker.py tests/integration/test_queue.py tests/unit/test_queue_controls.py"
+        passed: 13
+        failed: 0
+        skipped: 0
+        failures: []
+      notes: "Temporary SQLite migration upgrade/check/downgrade succeeds; full suite and Compose validation also pass."
+    upstream_trace:
+      plan_item: "4.1"
+      requirements: ["RF-06", "RF-08", "RNF-01", "RNF-02", "RNF-03", "RN-09"]
+      full_trace: "RF-06,RF-08,RNF-01,RNF-02,RNF-03,RN-09 → Phase-4.1 → T015 → src/queue/rate_limit.py,src/queue/retries.py"
+  - task_id: "T016"
+    description: "Pause/resume campaigns and cancel pending schedules/messages."
+    status: "completed"
+    implementation:
+      files_changed:
+        - file: "src/scheduler/campaign_controls.py"
+          changes:
+            - change_type: "added"
+              description: "Enforce allowed campaign state transitions and cancel unprocessed schedules and queued/retrying messages."
+        - file: "src/api/campaigns.py"
+          changes:
+            - change_type: "modified"
+              description: "Expose pause, resume, and cancel campaign actions with conflict responses for invalid transitions."
+        - file: "tests/integration/test_recipients_campaigns.py"
+          changes:
+            - change_type: "modified"
+              description: "Cover pause/resume/cancel API behavior and pending-message cancellation."
+    verification:
+      build_passed: true
+      test_results:
+        command: "python -m pytest tests/integration/test_recipients_campaigns.py"
+        passed: 12
+        failed: 0
+        skipped: 0
+        failures: []
+      notes: "Live Uvicorn probes returned campaign create 201, pause 200, invalid transition 409, resume 200, and cancel 200."
+    upstream_trace:
+      plan_item: "4.2"
+      requirements: ["RF-17"]
+      full_trace: "RF-17 → Phase-4.2 → T016 → src/scheduler/campaign_controls.py,src/api/campaigns.py"
+  - task_id: "T017"
+    description: "Configure warm-up quotas and reputation-triggered promotional campaign pauses."
+    status: "completed"
+    implementation:
+      files_changed:
+        - file: "src/queue/warmup.py"
+          changes:
+            - change_type: "added"
+              description: "Apply optional global/domain daily warm-up caps, count daily reputation signals, and pause promotional campaigns over configured thresholds."
+        - file: "src/config.py"
+          changes:
+            - change_type: "modified"
+              description: "Validate configurable rate, attempt, visibility, warm-up, and reputation settings."
+        - file: ".env.example"
+          changes:
+            - change_type: "modified"
+              description: "Document worker quota, retry, warm-up, and reputation settings."
+        - file: "docker-compose.yml"
+          changes:
+            - change_type: "modified"
+              description: "Pass queue and warm-up configuration to worker and Beat containers."
+        - file: "tests/unit/test_queue_controls.py"
+          changes:
+            - change_type: "modified"
+              description: "Cover global/domain warm-up caps and daily bounce/complaint counters."
+        - file: "tests/integration/test_queue.py"
+          changes:
+            - change_type: "modified"
+              description: "Verify reputation thresholds pause promotional campaigns without pausing transactional campaigns."
+    verification:
+      build_passed: true
+      test_results:
+        command: "python -m pytest tests/unit/test_queue_controls.py tests/integration/test_queue.py"
+        passed: 8
+        failed: 0
+        skipped: 0
+        failures: []
+      notes: "Reputation breaches emit a critical operator log. Bounce/complaint event ingestion will be wired in Phase 5."
+    upstream_trace:
+      plan_item: "4.2"
+      requirements: ["RF-20", "RN-10"]
+      full_trace: "RF-20,RN-10 → Phase-4.2 → T017 → src/queue/warmup.py"
 
 pending_tasks:
-  - {task_id: "T015", blocked_by: ["T014"], priority: "P1"}
-  - {task_id: "T016", blocked_by: ["T012"], priority: "P1"}
-  - {task_id: "T017", blocked_by: ["T015"], priority: "P1"}
   - {task_id: "T018", blocked_by: ["T008"], priority: "P1"}
   - {task_id: "T019", blocked_by: ["T018"], priority: "P1"}
   - {task_id: "T020", blocked_by: ["T005"], priority: "P1"}
@@ -511,10 +630,25 @@ traceability_chain:
     tasks: ["T012", "T013"]
     files: ["src/api/campaigns.py", "src/scheduler/windows.py", "src/scheduler/dispatch.py"]
     status: "completed"
+  - chain_id: "TRACE-RF-06-RF-08-RNF-01-RNF-02-RNF-03-RN-09"
+    requirement: "RF-06/RF-08/RNF-01/RNF-02/RNF-03/RN-09"
+    plan_phase: "Phase-4"
+    plan_item: "4.1"
+    tasks: ["T014", "T015"]
+    files: ["src/queue/tasks.py", "src/queue/rate_limit.py", "src/queue/retries.py", "src/worker.py"]
+    status: "completed"
+  - chain_id: "TRACE-RF-17-RF-20-RN-10"
+    requirement: "RF-17/RF-20/RN-10"
+    plan_phase: "Phase-4"
+    plan_item: "4.2"
+    tasks: ["T016", "T017"]
+    files: ["src/scheduler/campaign_controls.py", "src/api/campaigns.py", "src/queue/warmup.py"]
+    status: "completed"
 
 validation:
   passed: true
   errors: []
   warnings:
     - "Docker Compose container startup and live Mailpit delivery remain unverified because the Docker Desktop Linux engine is unavailable; Compose configuration is valid and live API endpoints were probed with temporary SQLite."
+    - "Reputation counters and automatic pause policy are implemented, but actual bounce/complaint ingestion is a Phase 5 webhook dependency."
   blocking_issues: []

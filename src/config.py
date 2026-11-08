@@ -1,6 +1,7 @@
 from typing import Literal
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -25,6 +26,18 @@ class Settings(BaseSettings):
     default_from_email: str = "MailFlow <no-reply@mailflow.local>"
     database_url: str = "postgresql+psycopg://mailflow:mailflow@postgres:5432/mailflow"
     redis_url: str = "redis://redis:6379/0"
+    provider_rate_per_second: int = Field(default=10, ge=1)
+    provider_daily_limit: int = Field(default=10000, ge=1)
+    recipient_domain_rate_per_second: int = Field(default=5, ge=1)
+    recipient_domain_daily_limit: int = Field(default=5000, ge=1)
+    worker_max_attempts: int = Field(default=5, ge=1)
+    retry_backoff_base_seconds: int = Field(default=2, ge=1)
+    processing_visibility_timeout_seconds: int = Field(default=300, ge=1)
+    warmup_enabled: bool = False
+    warmup_daily_limit: int = Field(default=500, ge=1)
+    warmup_domain_daily_limit: int = Field(default=50, ge=1)
+    reputation_bounce_threshold: float = Field(default=0.05, gt=0, le=1)
+    reputation_complaint_threshold: float = Field(default=0.001, gt=0, le=1)
 
     @property
     def allowed_test_recipients(self) -> frozenset[str]:

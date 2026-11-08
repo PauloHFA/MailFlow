@@ -157,10 +157,10 @@ Não foram encontrados arquivos de diretrizes de migração (`skills/guidelines/
 
 ### Fase 4 — Processamento confiável (US2)
 
-- [ ] T014 [Plan:4.1] Implementar tarefas Celery persistentes para buscar, renderizar e enviar mensagens em `src/queue/tasks.py` e `src/worker.py`.
-- [ ] T015 [Plan:4.1] Implementar limites por provedor/domínio, backoff, máximo de tentativas e fila de falhas em `src/queue/rate_limit.py` e `src/queue/retries.py`; validar falhas/reinício em `tests/integration/test_queue.py`.
-- [ ] T016 [Plan:4.2] Implementar transições de estado para pausar/retomar campanhas e cancelar pendências em `src/scheduler/campaign_controls.py` e `src/api/campaigns.py`.
-- [ ] T017 [Plan:4.2] Implementar limites configuráveis de warm-up e pausa por métricas de reputação em `src/queue/warmup.py`; validar limites em `tests/unit/test_warmup.py`.
+- [x] T014 [Plan:4.1] Implementar tarefas Celery persistentes para buscar, renderizar e enviar mensagens em `src/queue/tasks.py` e `src/worker.py`.
+- [x] T015 [Plan:4.1] Implementar limites por provedor/domínio, backoff, máximo de tentativas e fila de falhas em `src/queue/rate_limit.py` e `src/queue/retries.py`; validar falhas/reinício em `tests/integration/test_queue.py`.
+- [x] T016 [Plan:4.2] Implementar transições de estado para pausar/retomar campanhas e cancelar pendências em `src/scheduler/campaign_controls.py` e `src/api/campaigns.py`.
+- [x] T017 [Plan:4.2] Implementar limites configuráveis de warm-up e pausa por métricas de reputação em `src/queue/warmup.py`; validar limites em `tests/unit/test_queue_controls.py`.
 
 ### Fase 5 — Webhooks, supressão e descadastro (US3)
 

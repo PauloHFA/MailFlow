@@ -26,6 +26,7 @@ def test_initial_migration_creates_and_downgrades_mailflow_schema(
         "consents",
         "campaigns",
         "schedules",
+        "dead_letters",
     } <= table_names
     engine.dispose()
 

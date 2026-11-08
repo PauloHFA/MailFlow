@@ -1,0 +1,203 @@
+batch_id: "B03"
+required_endpoints:
+  - method: "POST"
+    path: "/api/v1/recipients/import"
+    source: "RF-04, RF-14"
+    status: "implemented"
+  - method: "POST"
+    path: "/api/v1/recipients/{recipient_id}/consents"
+    source: "RF-04, RN-01"
+    status: "implemented"
+  - method: "DELETE"
+    path: "/api/v1/recipients/{recipient_id}/consents/{consent_id}"
+    source: "RF-14, RN-01"
+    status: "implemented"
+  - method: "POST"
+    path: "/api/v1/campaigns"
+    source: "RF-05"
+    status: "implemented"
+completed_tasks: ["T010", "T011", "T012", "T013"]
+blocked_tasks: []
+files_changed:
+  T010:
+    - file: "src/consent/import_csv.py"
+      change_type: "created"
+      description: "Normalize and validate recipient CSV data and report duplicate/rejected rows."
+    - file: "src/api/recipients.py"
+      change_type: "created"
+      description: "Expose bounded CSV import, consent creation, and consent revocation routes."
+    - file: "tests/integration/test_recipients_campaigns.py"
+      change_type: "modified"
+      description: "Cover CSV import normalization, duplicate handling, validation, and consent completeness."
+  T011:
+    - file: "src/db/models.py"
+      change_type: "modified"
+      description: "Persist consent purpose, legal basis, source, registration, and revocation timestamps."
+    - file: "migrations/versions/0002_recipients_consent_campaigns.py"
+      change_type: "created"
+      description: "Add consent, campaign, and schedule persistence."
+    - file: "src/api/recipients.py"
+      change_type: "modified"
+      description: "Create/revoke consent records without inferring consent from recipient imports."
+  T012:
+    - file: "src/api/campaigns.py"
+      change_type: "created"
+      description: "Validate and schedule recipient-specific one-time or relative reminders."
+    - file: "src/api/main.py"
+      change_type: "modified"
+      description: "Register recipient and campaign routes."
+    - file: "tests/integration/test_recipients_campaigns.py"
+      change_type: "modified"
+      description: "Cover schedule creation and promotional delivery safety."
+  T013:
+    - file: "src/scheduler/windows.py"
+      change_type: "created"
+      description: "Calculate reminder dates and enforce local send windows using IANA timezones."
+    - file: "src/scheduler/dispatch.py"
+      change_type: "created"
+      description: "Dispatch due schedules idempotently and recheck campaign/recipient/consent state."
+    - file: "src/worker.py"
+      change_type: "modified"
+      description: "Run scheduled reminder scans through Celery Beat."
+    - file: "tests/unit/test_scheduling.py"
+      change_type: "created"
+      description: "Test timezone conversion, send windows, and reminder calculations."
+  modified_files:
+    - file: "README.md"
+      change_type: "modified"
+      description: "Document recipient imports, consent routes, scheduling behavior, and promotional safety gate."
+    - file: "plan.md"
+      change_type: "modified"
+      description: "Track Phase 3 tasks T010-T013 as completed."
+    - file: "checkpoints/tasks-to-impl.yaml"
+      change_type: "modified"
+      description: "Record Phase 3 evidence and update task completion counts."
+upstream_artifacts_consumed:
+  T010:
+    - artifact: "plan.md#Plano 3.1"
+      used_for: "CSV normalization, validation, deduplication, and rejection reporting."
+    - artifact: "MailFlow PDF#RF-04,RF-14,CA-04"
+      used_for: "Recipient import and explicit consent data requirements."
+  T011:
+    - artifact: "plan.md#Plano 3.1"
+      used_for: "Consent persistence and revocation behavior."
+  T012:
+    - artifact: "plan.md#Plano 3.2"
+      used_for: "Campaigns and per-recipient one-time/relative reminder schedules."
+  T013:
+    - artifact: "MailFlow PDF#RF-05,RN-08,CA-05"
+      used_for: "Reminder calculation, idempotency, and local send windows."
+evidence_mapping:
+  T010:
+    - upstream: "RF-04,RF-14,CA-04"
+      output: "src/consent/import_csv.py,src/api/recipients.py"
+      evidence: "CSV integration tests pass; live import endpoint returned HTTP 200."
+  T011:
+    - upstream: "RF-04,RF-14,RN-01"
+      output: "src/db/models.py,src/api/recipients.py"
+      evidence: "Consent create/revoke integration tests pass; live routes returned HTTP 201 and HTTP 200."
+  T012:
+    - upstream: "RF-05,CA-05"
+      output: "src/api/campaigns.py"
+      evidence: "Live transactional campaign creation returned HTTP 201; promotional creation was safely rejected with HTTP 422."
+  T013:
+    - upstream: "RF-05,RN-08"
+      output: "src/scheduler/windows.py,src/scheduler/dispatch.py"
+      evidence: "Timezone/window and scheduler idempotency tests pass; Alembic upgrade/check/downgrade has no ORM drift."
+traceability:
+  - requirement: "RF-04"
+    plan_item: "3.1"
+    task: "T010"
+    files: ["src/consent/import_csv.py", "src/api/recipients.py"]
+    status: "completed"
+  - requirement: "RF-14"
+    plan_item: "3.1"
+    task: "T011"
+    files: ["src/db/models.py", "src/api/recipients.py"]
+    status: "completed"
+  - requirement: "RN-01"
+    plan_item: "3.1"
+    task: "T011"
+    files: ["src/db/models.py", "src/api/recipients.py"]
+    status: "completed"
+  - requirement: "RF-05"
+    plan_item: "3.2"
+    task: "T012"
+    files: ["src/api/campaigns.py", "src/db/models.py"]
+    status: "completed"
+  - requirement: "RN-08"
+    plan_item: "3.2"
+    task: "T013"
+    files: ["src/scheduler/windows.py", "src/scheduler/dispatch.py"]
+    status: "completed"
+protocol_violation: false
+errors: []
+warnings:
+  - severity: "HIGH"
+    message: "Docker image build, container startup, and live Mailpit delivery remain unverified because Docker Desktop Linux Engine is unavailable."
+  - severity: "MEDIUM"
+    message: "Promotional campaigns are intentionally disabled until one-click unsubscribe and provider-suppression webhook support are implemented."
+endpoint_probes:
+  - method: "POST"
+    path: "/api/v1/recipients/import"
+    status: 200
+    result: "PASS — live Uvicorn process with temporary SQLite database."
+  - method: "POST"
+    path: "/api/v1/recipients/{recipient_id}/consents"
+    status: 201
+    result: "PASS — live Uvicorn process with temporary SQLite database."
+  - method: "DELETE"
+    path: "/api/v1/recipients/{recipient_id}/consents/{consent_id}"
+    status: 200
+    result: "PASS — live Uvicorn process with temporary SQLite database."
+  - method: "POST"
+    path: "/api/v1/campaigns"
+    status: 201
+    result: "PASS — live transactional campaign request."
+  - method: "POST"
+    path: "/api/v1/campaigns"
+    status: 422
+    result: "PASS — promotional campaigns are intentionally blocked pending unsubscribe/webhook support."
+test_results:
+  T010:
+    command: "python -m pytest tests/integration/test_recipients_campaigns.py tests/unit/test_scheduling.py tests/integration/test_migrations.py"
+    passed: 20
+    failed: 0
+    skipped: 0
+    failures: []
+  T011:
+    command: "python -m pytest tests/integration/test_recipients_campaigns.py tests/unit/test_scheduling.py tests/integration/test_migrations.py"
+    passed: 20
+    failed: 0
+    skipped: 0
+    failures: []
+  T012:
+    command: "python -m pytest tests/integration/test_recipients_campaigns.py tests/unit/test_scheduling.py tests/integration/test_migrations.py"
+    passed: 20
+    failed: 0
+    skipped: 0
+    failures: []
+  T013:
+    command: "python -m pytest tests/integration/test_recipients_campaigns.py tests/unit/test_scheduling.py tests/integration/test_migrations.py"
+    passed: 20
+    failed: 0
+    skipped: 0
+    failures: []
+  migrations:
+    command: "Alembic upgrade head; alembic check; downgrade base (temporary SQLite)"
+    passed: 1
+    failed: 0
+    skipped: 0
+    failures: []
+  validation:
+    command: "python -m compileall -q src tests migrations; python -m pip check; docker compose --env-file .env.example config --quiet"
+    passed: 3
+    failed: 0
+    skipped: 0
+    failures: []
+  full_suite:
+    command: "python -m pytest"
+    passed: 47
+    failed: 0
+    skipped: 0
+    failures: []

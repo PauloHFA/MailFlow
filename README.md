@@ -89,6 +89,21 @@ and Celery Beat checks for due occurrences every minute. Promotional campaigns a
 rejected until one-click unsubscribe and provider-suppression webhook support is
 implemented; consent records alone do not enable promotional delivery.
 
+Active campaigns can be paused, resumed, or cancelled with
+`POST /api/v1/campaigns/{campaign_id}/pause`, `/resume`, and `/cancel`. Cancelling
+marks undispatched schedules as complete and cancels queued/retrying messages. Paused
+campaigns retain their pending schedules and messages.
+
+The worker enforces Redis-backed per-provider and per-destination-domain rate limits
+per second and per UTC day. Temporary SMTP failures use persisted exponential backoff
+(two seconds initially, capped at one hour) for up to five total attempts; permanent
+failures and exhausted retries are stored in the `dead_letters` table. A periodic
+recovery task requeues messages left in `processing` after a worker crash. Optional
+warm-up limits are controlled by `WARMUP_ENABLED`, `WARMUP_DAILY_LIMIT`, and
+`WARMUP_DOMAIN_DAILY_LIMIT`. Daily bounce and complaint thresholds pause active
+promotional campaigns and emit a critical operator log; provider feedback events will
+be connected through the webhook phase.
+
 ## Run tests
 
 ```powershell

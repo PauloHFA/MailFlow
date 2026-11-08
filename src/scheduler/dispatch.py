@@ -113,6 +113,7 @@ def dispatch_due_schedules(
                 message = Message(
                     recipient_id=recipient.id,
                     template_id=campaign.template_id,
+                    campaign_id=campaign.id,
                     idempotency_key=idempotency_key,
                     request_hash=_request_hash(
                         recipient_email=recipient.email,

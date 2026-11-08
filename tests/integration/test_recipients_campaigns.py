@@ -481,3 +481,67 @@ def test_paused_campaign_schedule_is_not_dispatched(
     )
     assert count == 0
     assert enqueued_ids == []
+
+
+def test_campaign_can_pause_resume_and_cancel_pending_messages(
+    api_database: tuple[TestClient, sessionmaker[Session], list[str]],
+) -> None:
+    client, factory, _ = api_database
+    template_id = create_template(client)
+    with factory() as session:
+        recipient = Recipient(email="qa@example.com", timezone="UTC")
+        session.add(recipient)
+        session.commit()
+        recipient_id = recipient.id
+
+    created = client.post(
+        "/api/v1/campaigns",
+        json={
+            "name": "controllable-campaign",
+            "template_id": template_id,
+            "recipient_ids": [recipient_id],
+            "variables": {"name": "Ada"},
+            "schedule": {
+                "kind": "once",
+                "send_at": "2026-11-12T12:00:00Z",
+                "timezone": "UTC",
+            },
+        },
+    )
+    campaign_id = created.json()["id"]
+    with factory() as session:
+        schedule = session.scalar(select(CampaignSchedule))
+        pending = Message(
+            recipient_id=recipient_id,
+            template_id=template_id,
+            campaign_id=campaign_id,
+            idempotency_key="campaign-control-message",
+            request_hash="f" * 64,
+            status=MessageStatus.QUEUED.value,
+            message_type="transactional",
+            variables={"name": "Ada"},
+        )
+        session.add(pending)
+        session.commit()
+        message_id = pending.id
+        schedule_id = schedule.id
+
+    paused = client.post(f"/api/v1/campaigns/{campaign_id}/pause")
+    invalid_pause = client.post(f"/api/v1/campaigns/{campaign_id}/pause")
+    resumed = client.post(f"/api/v1/campaigns/{campaign_id}/resume")
+    cancelled = client.post(f"/api/v1/campaigns/{campaign_id}/cancel")
+
+    assert paused.status_code == 200
+    assert paused.json()["status"] == "paused"
+    assert invalid_pause.status_code == 409
+    assert resumed.status_code == 200
+    assert resumed.json()["status"] == "active"
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "cancelled"
+    with factory() as session:
+        pending = session.get(Message, message_id)
+        schedule = session.get(CampaignSchedule, schedule_id)
+    assert pending is not None
+    assert pending.status == MessageStatus.CANCELLED.value
+    assert schedule is not None
+    assert schedule.processed_at is not None

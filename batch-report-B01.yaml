@@ -1,0 +1,163 @@
+batch_id: "B01"
+required_endpoints:
+  - method: GET
+    path: /health
+    source: "MailFlow PDF, API summary and RF-22"
+    status: implemented
+  - method: GET
+    path: /metrics
+    source: "MailFlow PDF, API summary and RF-22"
+    status: implemented
+completed_tasks: ["T001", "T002", "T003", "T004"]
+blocked_tasks: []
+files_changed:
+  T001:
+    - file: ".gitignore"
+      change_type: "created"
+      description: "Ignore Python environments, generated files, and local secrets."
+    - file: ".dockerignore"
+      change_type: "created"
+      description: "Exclude local configuration and generated/test files from Docker builds."
+    - file: "pyproject.toml"
+      change_type: "created"
+      description: "Define Python 3.12 package, runtime dependencies, and pytest settings."
+    - file: "README.md"
+      change_type: "created"
+      description: "Document local setup, safe testing, and current endpoints."
+    - file: "src/__init__.py"
+      change_type: "created"
+      description: "Initialize the application package."
+    - file: "src/api/__init__.py"
+      change_type: "created"
+      description: "Initialize the API package."
+    - file: "src/queue/__init__.py"
+      change_type: "created"
+      description: "Initialize the queue package."
+    - file: "tests/unit/test_config.py"
+      change_type: "created"
+      description: "Test allowlist enforcement in non-production."
+    - file: "tests/integration/test_health.py"
+      change_type: "created"
+      description: "Test health and Prometheus metrics endpoints."
+    - file: "docs/.gitkeep"
+      change_type: "created"
+      description: "Create the planned documentation directory."
+    - file: "docker/.gitkeep"
+      change_type: "created"
+      description: "Create the planned Docker support directory."
+  T002:
+    - file: "Dockerfile"
+      change_type: "created"
+      description: "Define the Python 3.12 application image."
+    - file: "docker-compose.yml"
+      change_type: "created"
+      description: "Define API, worker, beat, PostgreSQL, Redis, and Mailpit services."
+    - file: "src/worker.py"
+      change_type: "created"
+      description: "Configure the Celery app with safe late acknowledgements."
+    - file: ".env.example"
+      change_type: "created"
+      description: "Provide local-only environment variable names and placeholders."
+  T003:
+    - file: "src/config.py"
+      change_type: "created"
+      description: "Load environment settings and reject unapproved non-production recipients."
+    - file: ".env.example"
+      change_type: "created"
+      description: "Document allowlist and local service settings."
+  T004:
+    - file: "src/logging_config.py"
+      change_type: "created"
+      description: "Emit structured JSON logs without recording recipient data or raw URL paths."
+    - file: "src/api/main.py"
+      change_type: "created"
+      description: "Expose health and Prometheus metrics endpoints with request instrumentation."
+    - file: "README.md"
+      change_type: "created"
+      description: "Document how to launch the stack and test the endpoints."
+upstream_artifacts_consumed:
+  T001:
+    - artifact: "plan.md"
+      used_for: "Python 3.12 stack, package layout, and local development setup."
+  T002:
+    - artifact: "plan.md"
+      used_for: "Compose service list and Mailpit-first non-production environment."
+  T003:
+    - artifact: "MailFlow Automação de Envio de E-mails (Transacional, Lembretes e Relatórios).pdf"
+      used_for: "RF-19 safe test-mode and RNF-04 environment-based secret configuration."
+  T004:
+    - artifact: "MailFlow Automação de Envio de E-mails (Transacional, Lembretes e Relatórios).pdf"
+      used_for: "RF-22 health/metrics endpoints and RNF-06 structured observability."
+evidence_mapping:
+  T001:
+    - upstream: "plan.md#Fase 1 / Plano 1.1"
+      output: "pyproject.toml, README.md, .gitignore, src/, tests/"
+      evidence: "Editable package installation and all six tests pass."
+  T002:
+    - upstream: "plan.md#Fase 1 / Plano 1.1; RNF-07"
+      output: "docker-compose.yml, Dockerfile, src/worker.py"
+      evidence: "docker compose config --quiet succeeds with .env.example."
+  T003:
+    - upstream: "MailFlow PDF#RF-19"
+      output: "src/config.py#validate_recipient"
+      evidence: "Tests verify allowlisted, unlisted, empty-allowlist, and production cases."
+  T004:
+    - upstream: "MailFlow PDF#RF-22"
+      output: "src/api/main.py#/health,/metrics"
+      evidence: "Six pytest tests pass; live HTTP probes returned 200 for both endpoints."
+traceability:
+  - requirement: "RNF-07"
+    plan_item: "1.1"
+    task: "T001"
+    files: ["pyproject.toml", "Dockerfile", "docker-compose.yml"]
+    status: "completed"
+  - requirement: "RF-19"
+    plan_item: "1.1"
+    task: "T002"
+    files: ["docker-compose.yml", "src/worker.py"]
+    status: "completed"
+  - requirement: "RNF-04"
+    plan_item: "1.2"
+    task: "T003"
+    files: ["src/config.py", ".env.example"]
+    status: "completed"
+  - requirement: "RNF-06"
+    plan_item: "1.2"
+    task: "T004"
+    files: ["src/logging_config.py", "src/api/main.py"]
+    status: "completed"
+  - requirement: "RF-22"
+    plan_item: "1.2"
+    task: "T004"
+    files: ["src/api/main.py"]
+    status: "completed"
+protocol_violation: false
+errors: []
+warnings:
+  - severity: HIGH
+    message: "Docker image build and container startup could not be verified because the Docker Desktop Linux engine is not running. Compose syntax validation passed."
+test_results:
+  T001:
+    command: "python -m pip install -e \".[dev]\""
+    passed: 1
+    failed: 0
+    skipped: 0
+    failures: []
+  T002:
+    command: "docker compose --env-file .env.example config --quiet"
+    passed: 1
+    failed: 0
+    skipped: 0
+    failures: []
+  T003:
+    command: "python -m pytest tests/unit/test_config.py"
+    passed: 4
+    failed: 0
+    skipped: 0
+    failures: []
+  T004:
+    command: "python -m pytest tests/integration/test_health.py; live curl.exe probes"
+    passed: 2
+    failed: 0
+    skipped: 0
+    failures: []

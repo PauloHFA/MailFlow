@@ -1,0 +1,143 @@
+metadata:
+  generated: "2026-11-08"
+  source_plan: "plan.md"
+  target_tasks: "plan.md (tarefas inline)"
+
+summary:
+  total_plan_items: 14
+  covered_plan_items: 14
+  missing_plan_items: 0
+  coverage_percentage: 100.0
+  total_tasks_generated: 25
+  orphan_tasks: 0
+
+phases:
+  - phase_id: "Phase-1"
+    phase_name: "Setup e ambiente local"
+    items:
+      - item_id: "1.1"
+        description: "Repositório executável"
+        tasks: ["T001", "T002"]
+      - item_id: "1.2"
+        description: "Configuração, saúde e documentação inicial"
+        tasks: ["T003", "T004"]
+  - phase_id: "Phase-2"
+    phase_name: "Núcleo transacional"
+    items:
+      - item_id: "2.1"
+        description: "Persistência, templates e renderização"
+        tasks: ["T005", "T006", "T007"]
+      - item_id: "2.2"
+        description: "API transacional e idempotência"
+        tasks: ["T008", "T009"]
+  - phase_id: "Phase-3"
+    phase_name: "Importação, consentimento e lembretes"
+    items:
+      - item_id: "3.1"
+        description: "Destinatários, CSV e consentimentos"
+        tasks: ["T010", "T011"]
+      - item_id: "3.2"
+        description: "Campanhas programadas e janela de envio"
+        tasks: ["T012", "T013"]
+  - phase_id: "Phase-4"
+    phase_name: "Processamento confiável"
+    items:
+      - item_id: "4.1"
+        description: "Worker, limites e retentativas"
+        tasks: ["T014", "T015"]
+      - item_id: "4.2"
+        description: "Pausa, warm-up e proteção de reputação"
+        tasks: ["T016", "T017"]
+  - phase_id: "Phase-5"
+    phase_name: "Webhooks, supressão e descadastro"
+    items:
+      - item_id: "5.1"
+        description: "Adaptadores e processamento de eventos"
+        tasks: ["T018", "T019"]
+      - item_id: "5.2"
+        description: "Supressão e one-click unsubscribe"
+        tasks: ["T020", "T021"]
+  - phase_id: "Phase-6"
+    phase_name: "Relatórios, domínio e operação"
+    items:
+      - item_id: "6.1"
+        description: "Relatórios agendados e anexos"
+        tasks: ["T022"]
+      - item_id: "6.2"
+        description: "Verificação de domínio e indicadores"
+        tasks: ["T023"]
+  - phase_id: "Phase-7"
+    phase_name: "Staging real, validação e entrega"
+    items:
+      - item_id: "7.1"
+        description: "Provedor real e entregabilidade"
+        tasks: ["T024"]
+      - item_id: "7.2"
+        description: "Qualidade, privacidade e entrega final"
+        tasks: ["T025"]
+
+missing_plan_items: []
+orphan_tasks: []
+
+upstream_trace:
+  - plan_item: "1.1"
+    source_requirements: ["RNF-07", "RF-19"]
+    tasks: ["T001", "T002"]
+    full_trace: "RNF-07,RF-19 → Phase-1.1 → T001,T002"
+  - plan_item: "1.2"
+    source_requirements: ["RNF-04", "RNF-06", "RF-22"]
+    tasks: ["T003", "T004"]
+    full_trace: "RNF-04,RNF-06,RF-22 → Phase-1.2 → T003,T004"
+  - plan_item: "2.1"
+    source_requirements: ["RF-02", "RF-03", "RNF-05", "RNF-08", "RNF-09", "RNF-10", "RN-02", "RN-05", "RN-11", "RN-12"]
+    tasks: ["T005", "T006", "T007"]
+    full_trace: "RF-02,RF-03,RNF-05,RNF-08,RNF-09,RNF-10,RN-02,RN-05,RN-11,RN-12 → Phase-2.1 → T005,T006,T007"
+  - plan_item: "2.2"
+    source_requirements: ["RF-01", "RF-07", "RF-13", "RNF-02", "RN-06", "RN-07"]
+    tasks: ["T008", "T009"]
+    full_trace: "RF-01,RF-07,RF-13,RNF-02,RN-06,RN-07 → Phase-2.2 → T008,T009"
+  - plan_item: "3.1"
+    source_requirements: ["RF-04", "RF-14", "RN-01"]
+    tasks: ["T010", "T011"]
+    full_trace: "RF-04,RF-14,RN-01 → Phase-3.1 → T010,T011"
+  - plan_item: "3.2"
+    source_requirements: ["RF-05", "RN-07", "RN-08"]
+    tasks: ["T012", "T013"]
+    full_trace: "RF-05,RN-07,RN-08 → Phase-3.2 → T012,T013"
+  - plan_item: "4.1"
+    source_requirements: ["RF-06", "RF-08", "RNF-01", "RNF-02", "RNF-03", "RN-09"]
+    tasks: ["T014", "T015"]
+    full_trace: "RF-06,RF-08,RNF-01,RNF-02,RNF-03,RN-09 → Phase-4.1 → T014,T015"
+  - plan_item: "4.2"
+    source_requirements: ["RF-17", "RF-20", "RN-10"]
+    tasks: ["T016", "T017"]
+    full_trace: "RF-17,RF-20,RN-10 → Phase-4.2 → T016,T017"
+  - plan_item: "5.1"
+    source_requirements: ["RF-09", "RNF-04", "RN-03", "RN-10"]
+    tasks: ["T018", "T019"]
+    full_trace: "RF-09,RNF-04,RN-03,RN-10 → Phase-5.1 → T018,T019"
+  - plan_item: "5.2"
+    source_requirements: ["RF-10", "RF-11", "RF-12", "RF-13", "RN-01", "RN-02", "RN-03", "RN-04", "RN-05"]
+    tasks: ["T020", "T021"]
+    full_trace: "RF-10,RF-11,RF-12,RF-13,RN-01,RN-02,RN-03,RN-04,RN-05 → Phase-5.2 → T020,T021"
+  - plan_item: "6.1"
+    source_requirements: ["RF-15", "RN-12"]
+    tasks: ["T022"]
+    full_trace: "RF-15,RN-12 → Phase-6.1 → T022"
+  - plan_item: "6.2"
+    source_requirements: ["RF-16", "RF-18", "RF-21", "RF-22", "RNF-06"]
+    tasks: ["T023"]
+    full_trace: "RF-16,RF-18,RF-21,RF-22,RNF-06 → Phase-6.2 → T023"
+  - plan_item: "7.1"
+    source_requirements: ["RF-16", "RNF-01", "RNF-03", "RNF-09", "RNF-10", "RN-06", "RN-09", "RN-10"]
+    tasks: ["T024"]
+    full_trace: "RF-16,RNF-01,RNF-03,RNF-09,RNF-10,RN-06,RN-09,RN-10 → Phase-7.1 → T024"
+  - plan_item: "7.2"
+    source_requirements: ["RNF-02", "RNF-04", "RNF-05", "RNF-06", "RNF-07", "RNF-08", "RN-01", "RN-02", "RN-03", "RN-04", "RN-05", "RN-06", "RN-07", "RN-08", "RN-09", "RN-10", "RN-11", "RN-12"]
+    tasks: ["T025"]
+    full_trace: "RNF-02,RNF-04,RNF-05,RNF-06,RNF-07,RNF-08,RN-01..RN-12 → Phase-7.2 → T025"
+
+validation:
+  passed: true
+  errors: []
+  warnings: []

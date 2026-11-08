@@ -1,0 +1,264 @@
+batch_id: "B02"
+required_endpoints:
+  - method: "POST"
+    path: "/api/v1/templates"
+    source: "RF-02"
+    status: "implemented"
+  - method: "GET"
+    path: "/api/v1/templates/{template_id}"
+    source: "Template management API"
+    status: "implemented"
+  - method: "POST"
+    path: "/api/v1/templates/{template_id}/preview"
+    source: "RF-02"
+    status: "implemented"
+  - method: "POST"
+    path: "/api/v1/messages"
+    source: "RF-01 and API summary"
+    status: "implemented"
+  - method: "GET"
+    path: "/api/v1/messages/{message_id}"
+    source: "API summary"
+    status: "implemented"
+completed_tasks: ["T005", "T006", "T007", "T008", "T009"]
+blocked_tasks: []
+files_changed:
+  T005:
+    - file: "src/db/base.py"
+      change_type: "created"
+      description: "Define SQLAlchemy declarative base."
+    - file: "src/db/models.py"
+      change_type: "created"
+      description: "Define recipients, templates, messages, events, and suppression schema."
+    - file: "src/db/session.py"
+      change_type: "created"
+      description: "Create cached SQLAlchemy engine and session factory."
+    - file: "alembic.ini"
+      change_type: "created"
+      description: "Configure Alembic migrations."
+    - file: "migrations/env.py"
+      change_type: "created"
+      description: "Connect Alembic to DATABASE_URL and application metadata."
+    - file: "migrations/versions/0001_initial_schema.py"
+      change_type: "created"
+      description: "Add reversible initial PostgreSQL schema migration."
+    - file: "tests/integration/test_migrations.py"
+      change_type: "created"
+      description: "Verify migration upgrade and downgrade."
+  T006:
+    - file: "src/rendering/templates.py"
+      change_type: "created"
+      description: "Render strict Jinja subject, HTML, and text; escape HTML and validate declarations/alt text."
+    - file: "src/api/templates.py"
+      change_type: "created"
+      description: "Provide versioned template create/get/preview endpoints."
+    - file: "src/api/main.py"
+      change_type: "modified"
+      description: "Register the template and message routers."
+  T007:
+    - file: "tests/unit/test_templates.py"
+      change_type: "created"
+      description: "Test variable validation, injection rejection, escaping and image alt text."
+    - file: "tests/integration/test_messages.py"
+      change_type: "created"
+      description: "Test template versioning and preview behavior."
+  T008:
+    - file: "src/providers/base.py"
+      change_type: "created"
+      description: "Define provider protocol and message/result data types."
+    - file: "src/providers/smtp.py"
+      change_type: "created"
+      description: "Construct multipart SMTP email and enforce test recipient/header safety."
+    - file: "tests/unit/test_providers.py"
+      change_type: "created"
+      description: "Test SMTP message construction and safety checks."
+  T009:
+    - file: "src/api/messages.py"
+      change_type: "created"
+      description: "Implement transactional API, persistence, suppression checks, idempotency, replay and status."
+    - file: "src/api/dependencies.py"
+      change_type: "created"
+      description: "Provide database, settings and queue dependencies."
+    - file: "src/queue/dispatch.py"
+      change_type: "created"
+      description: "Publish message IDs to Celery after database persistence."
+    - file: "src/config.py"
+      change_type: "modified"
+      description: "Add default sender, psycopg URL and cached settings provider."
+    - file: "src/logging_config.py"
+      change_type: "modified"
+      description: "Include message ID in structured log records."
+    - file: "tests/integration/test_messages.py"
+      change_type: "created"
+      description: "Cover API versioning, sending, replay, conflicts, validation and broker errors."
+  T014:
+    - file: "src/worker.py"
+      change_type: "modified"
+      description: "Begin worker flow: claim message, recheck suppression, render, send and persist outcome."
+    - file: "tests/integration/test_worker.py"
+      change_type: "created"
+      description: "Test basic provider send, duplicate task protection, and suppression block."
+modified_files:
+  - file: "pyproject.toml"
+    change_type: "modified"
+    description: "Add SQLAlchemy, Alembic, Jinja2, email validation and PostgreSQL driver dependencies."
+  - file: "Dockerfile"
+    change_type: "modified"
+    description: "Include Alembic configuration and migration files in the image."
+  - file: "docker-compose.yml"
+    change_type: "modified"
+    description: "Run migrations before API startup and wait for API health before worker/beat."
+  - file: ".env.example"
+    change_type: "modified"
+    description: "Document the configured default sender."
+  - file: "README.md"
+    change_type: "modified"
+    description: "Document template preview/versioning, transactional send, status and migrations."
+  - file: "plan.md"
+    change_type: "modified"
+    description: "Mark Phase 2 tasks T005-T009 complete."
+upstream_artifacts_consumed:
+  T005:
+    - artifact: "plan.md#Plano 2.1"
+      used_for: "Core entities and persistence requirements."
+    - artifact: "MailFlow PDF#Section 11"
+      used_for: "Recipient, template, message, event, and suppression fields."
+  T006:
+    - artifact: "MailFlow PDF#RF-02, RF-03, Sections 12.1 and 16.1"
+      used_for: "Versioned HTML/text templates and explicit required-variable validation."
+  T007:
+    - artifact: "MailFlow PDF#CA-03, CA-15 and RNF-10"
+      used_for: "Missing variable, header injection, and email accessibility checks."
+  T008:
+    - artifact: "MailFlow PDF#Sections 3 and 9.2"
+      used_for: "Mailpit-first provider abstraction."
+  T009:
+    - artifact: "MailFlow PDF#RF-01, RF-07, RF-19, API summary"
+      used_for: "Transactional send, idempotency, safe test recipient policy, and message status route."
+evidence_mapping:
+  T005:
+    - upstream: "MailFlow PDF#Section 11"
+      output: "src/db/models.py,migrations/versions/0001_initial_schema.py"
+      evidence: "Alembic upgrade/check/downgrade succeeds on temporary SQLite; no ORM drift."
+  T006:
+    - upstream: "RF-02,RF-03,CA-03"
+      output: "src/rendering/templates.py,src/api/templates.py"
+      evidence: "Template unit tests and API create/version/preview integration tests pass."
+  T007:
+    - upstream: "CA-15,RNF-10"
+      output: "tests/unit/test_templates.py"
+      evidence: "Seven tests pass for missing/undeclared variables, subject injection, escaping, and alt text."
+  T008:
+    - upstream: "MailFlow PDF#EmailProvider"
+      output: "src/providers/base.py,src/providers/smtp.py"
+      evidence: "Three provider tests pass for multipart body, recipient allowlist, and header injection."
+  T009:
+    - upstream: "RF-01,RF-07,CA-01,CA-02"
+      output: "src/api/messages.py,src/queue/dispatch.py"
+      evidence: "Nine API integration tests pass using FastAPI TestClient and isolated SQLite."
+  T014:
+    - upstream: "MailFlow PDF#Section 9.1"
+      output: "src/worker.py#process_message"
+      evidence: "Two isolated worker tests pass; rate limiting/retries remain incomplete."
+traceability:
+  - requirement: "RF-02"
+    plan_item: "2.1"
+    task: "T005"
+    files: ["src/db/models.py", "migrations/versions/0001_initial_schema.py"]
+    status: "completed"
+  - requirement: "RF-02"
+    plan_item: "2.1"
+    task: "T006"
+    files: ["src/api/templates.py", "src/rendering/templates.py"]
+    status: "completed"
+  - requirement: "RF-03"
+    plan_item: "2.1"
+    task: "T007"
+    files: ["tests/unit/test_templates.py", "tests/integration/test_messages.py"]
+    status: "completed"
+  - requirement: "RF-01"
+    plan_item: "2.2"
+    task: "T008"
+    files: ["src/providers/base.py", "src/providers/smtp.py"]
+    status: "completed"
+  - requirement: "RF-01"
+    plan_item: "2.2"
+    task: "T009"
+    files: ["src/api/messages.py", "src/queue/dispatch.py"]
+    status: "completed"
+  - requirement: "RF-07"
+    plan_item: "2.2"
+    task: "T009"
+    files: ["src/api/messages.py", "src/db/models.py"]
+    status: "completed"
+protocol_violation: false
+errors: []
+warnings:
+  - severity: "HIGH"
+    message: "Docker Desktop Linux Engine remains unavailable, so Compose container startup and live Mailpit delivery were not verified."
+  - severity: "MEDIUM"
+    message: "T014 has a tested basic worker send flow, but provider retry/backoff and rate limiting remain pending."
+endpoint_probes:
+  - method: "POST"
+    path: "/api/v1/templates"
+    status: 201
+    result: "PASS — FastAPI TestClient integration test"
+  - method: "GET"
+    path: "/api/v1/templates/{template_id}"
+    status: 200
+    result: "PASS — covered through template persistence/API test setup"
+  - method: "POST"
+    path: "/api/v1/templates/{template_id}/preview"
+    status: 200
+    result: "PASS — FastAPI TestClient integration test"
+  - method: "POST"
+    path: "/api/v1/messages"
+    status: "202/409/422/503"
+    result: "PASS — success and expected validation/conflict/broker failure paths tested"
+  - method: "GET"
+    path: "/api/v1/messages/{message_id}"
+    status: 200
+    result: "PASS — FastAPI TestClient integration test"
+test_results:
+  T005:
+    command: "python -m pytest tests/integration/test_migrations.py; Alembic upgrade/check/downgrade"
+    passed: 1
+    failed: 0
+    skipped: 0
+    failures: []
+  T006:
+    command: "python -m pytest tests/unit/test_templates.py tests/integration/test_messages.py::test_template_create_preview_and_versioning"
+    passed: 8
+    failed: 0
+    skipped: 0
+    failures: []
+  T007:
+    command: "python -m pytest tests/unit/test_templates.py"
+    passed: 7
+    failed: 0
+    skipped: 0
+    failures: []
+  T008:
+    command: "python -m pytest tests/unit/test_providers.py"
+    passed: 3
+    failed: 0
+    skipped: 0
+    failures: []
+  T009:
+    command: "python -m pytest tests/integration/test_messages.py"
+    passed: 9
+    failed: 0
+    skipped: 0
+    failures: []
+  T014:
+    command: "python -m pytest tests/integration/test_worker.py"
+    passed: 2
+    failed: 0
+    skipped: 0
+    failures: []
+  B02:
+    command: "python -m pytest"
+    passed: 28
+    failed: 0
+    skipped: 0
+    failures: []

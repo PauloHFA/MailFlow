@@ -1,0 +1,371 @@
+metadata:
+  generated: "2026-11-08"
+  source_spec: "MailFlow Automação de Envio de E-mails (Transacional, Lembretes e Relatórios).pdf"
+  target_plan: "plan.md"
+
+summary:
+  total_requirements: 44
+  covered_requirements: 44
+  missing_requirements: 0
+  coverage_percentage: 100.0
+
+requirements:
+  - req_id: "RF-01"
+    req_description: "Enviar e-mail transacional pela API"
+    priority: "M"
+    plan_mapping:
+      phase: "Fase-2"
+      phase_name: "Núcleo transacional"
+      items: [{item_id: "2.2", description: "API transacional e idempotência"}]
+  - req_id: "RF-02"
+    req_description: "Gerenciar templates HTML/texto e versões"
+    priority: "M"
+    plan_mapping:
+      phase: "Fase-2"
+      phase_name: "Núcleo transacional"
+      items: [{item_id: "2.1", description: "Persistência, templates e renderização"}]
+  - req_id: "RF-03"
+    req_description: "Validar variáveis obrigatórias dos templates"
+    priority: "M"
+    plan_mapping:
+      phase: "Fase-2"
+      phase_name: "Núcleo transacional"
+      items: [{item_id: "2.1", description: "Persistência, templates e renderização"}]
+  - req_id: "RF-04"
+    req_description: "Importar destinatários por CSV com validação"
+    priority: "M"
+    plan_mapping:
+      phase: "Fase-3"
+      phase_name: "Importação, consentimento e lembretes"
+      items: [{item_id: "3.1", description: "Destinatários, CSV e consentimentos"}]
+  - req_id: "RF-05"
+    req_description: "Programar envios com data, regra relativa e fuso"
+    priority: "M"
+    plan_mapping:
+      phase: "Fase-3"
+      phase_name: "Importação, consentimento e lembretes"
+      items: [{item_id: "3.2", description: "Campanhas programadas e janela de envio"}]
+  - req_id: "RF-06"
+    req_description: "Fila com limite de taxa por provedor/domínio"
+    priority: "M"
+    plan_mapping:
+      phase: "Fase-4"
+      phase_name: "Processamento confiável"
+      items: [{item_id: "4.1", description: "Worker, limites e retentativas"}]
+  - req_id: "RF-07"
+    req_description: "Garantir idempotência por chave"
+    priority: "M"
+    plan_mapping:
+      phase: "Fase-2"
+      phase_name: "Núcleo transacional"
+      items: [{item_id: "2.2", description: "API transacional e idempotência"}]
+  - req_id: "RF-08"
+    req_description: "Retentar falhas temporárias com backoff e fila de falhas"
+    priority: "M"
+    plan_mapping:
+      phase: "Fase-4"
+      phase_name: "Processamento confiável"
+      items: [{item_id: "4.1", description: "Worker, limites e retentativas"}]
+  - req_id: "RF-09"
+    req_description: "Receber webhooks assinados do provedor"
+    priority: "M"
+    plan_mapping:
+      phase: "Fase-5"
+      phase_name: "Webhooks, supressão e descadastro"
+      items: [{item_id: "5.1", description: "Adaptadores e processamento de eventos"}]
+  - req_id: "RF-10"
+    req_description: "Manter supressão global e bloquear destinatários"
+    priority: "M"
+    plan_mapping:
+      phase: "Fase-5"
+      phase_name: "Webhooks, supressão e descadastro"
+      items: [{item_id: "5.2", description: "Supressão e one-click unsubscribe"}]
+  - req_id: "RF-11"
+    req_description: "Adicionar cabeçalhos e link de descadastro promocional"
+    priority: "M"
+    plan_mapping:
+      phase: "Fase-5"
+      phase_name: "Webhooks, supressão e descadastro"
+      items: [{item_id: "5.2", description: "Supressão e one-click unsubscribe"}]
+  - req_id: "RF-12"
+    req_description: "Processar descadastro em um clique"
+    priority: "M"
+    plan_mapping:
+      phase: "Fase-5"
+      phase_name: "Webhooks, supressão e descadastro"
+      items: [{item_id: "5.2", description: "Supressão e one-click unsubscribe"}]
+  - req_id: "RF-13"
+    req_description: "Classificar mensagens transacionais e promocionais"
+    priority: "M"
+    plan_mapping:
+      phase: "Fase-2/Fase-5"
+      phase_name: "Núcleo transacional e supressão"
+      items:
+        - {item_id: "2.2", description: "API transacional e idempotência"}
+        - {item_id: "5.2", description: "Supressão e one-click unsubscribe"}
+  - req_id: "RF-14"
+    req_description: "Registrar origem, data e finalidade do consentimento"
+    priority: "M"
+    plan_mapping:
+      phase: "Fase-3"
+      phase_name: "Importação, consentimento e lembretes"
+      items: [{item_id: "3.1", description: "Destinatários, CSV e consentimentos"}]
+  - req_id: "RF-15"
+    req_description: "Gerar e anexar relatório PDF agendado"
+    priority: "S"
+    plan_mapping:
+      phase: "Fase-6"
+      phase_name: "Relatórios, domínio e operação"
+      items: [{item_id: "6.1", description: "Relatórios agendados e anexos"}]
+  - req_id: "RF-16"
+    req_description: "Verificar SPF, DKIM e DMARC"
+    priority: "S"
+    plan_mapping:
+      phase: "Fase-6/Fase-7"
+      phase_name: "Operação e staging real"
+      items:
+        - {item_id: "6.2", description: "Verificação de domínio e indicadores"}
+        - {item_id: "7.1", description: "Provedor real e entregabilidade"}
+  - req_id: "RF-17"
+    req_description: "Aplicar aquecimento gradual de domínio/IP"
+    priority: "S"
+    plan_mapping:
+      phase: "Fase-4"
+      phase_name: "Processamento confiável"
+      items: [{item_id: "4.2", description: "Pausa, warm-up e proteção de reputação"}]
+  - req_id: "RF-18"
+    req_description: "Expor métricas de envio e entrega"
+    priority: "S"
+    plan_mapping:
+      phase: "Fase-6"
+      phase_name: "Relatórios, domínio e operação"
+      items: [{item_id: "6.2", description: "Verificação de domínio e indicadores"}]
+  - req_id: "RF-19"
+    req_description: "Modo de teste com allowlist e redirecionamento Mailpit"
+    priority: "M"
+    plan_mapping:
+      phase: "Fase-1"
+      phase_name: "Setup e ambiente local"
+      items: [{item_id: "1.1", description: "Repositório executável"}]
+  - req_id: "RF-20"
+    req_description: "Pausar/retomar campanhas e cancelar pendências"
+    priority: "S"
+    plan_mapping:
+      phase: "Fase-4"
+      phase_name: "Processamento confiável"
+      items: [{item_id: "4.2", description: "Pausa, warm-up e proteção de reputação"}]
+  - req_id: "RF-21"
+    req_description: "Exportar logs e consentimentos em CSV"
+    priority: "C"
+    plan_mapping:
+      phase: "Fase-6"
+      phase_name: "Relatórios, domínio e operação"
+      items: [{item_id: "6.2", description: "Verificação de domínio e indicadores"}]
+  - req_id: "RF-22"
+    req_description: "Expor health e métricas"
+    priority: "S"
+    plan_mapping:
+      phase: "Fase-1/Fase-6"
+      phase_name: "Setup e operação"
+      items:
+        - {item_id: "1.2", description: "Configuração, saúde e documentação inicial"}
+        - {item_id: "6.2", description: "Verificação de domínio e indicadores"}
+  - req_id: "RNF-01"
+    req_description: "p95 evento ao provedor abaixo de 30 segundos"
+    priority: "M"
+    plan_mapping:
+      phase: "Fase-4/Fase-7"
+      phase_name: "Processamento e staging"
+      items:
+        - {item_id: "4.1", description: "Worker, limites e retentativas"}
+        - {item_id: "7.1", description: "Provedor real e entregabilidade"}
+  - req_id: "RNF-02"
+    req_description: "Durabilidade com pelo menos uma tentativa e sem duplicidade"
+    priority: "M"
+    plan_mapping:
+      phase: "Fase-2/Fase-4/Fase-7"
+      phase_name: "Núcleo, processamento e validação"
+      items:
+        - {item_id: "2.2", description: "API transacional e idempotência"}
+        - {item_id: "4.1", description: "Worker, limites e retentativas"}
+        - {item_id: "7.2", description: "Qualidade, privacidade e entrega final"}
+  - req_id: "RNF-03"
+    req_description: "Workers horizontais e 10.000 envios/dia"
+    priority: "M"
+    plan_mapping:
+      phase: "Fase-4/Fase-7"
+      phase_name: "Processamento e staging"
+      items:
+        - {item_id: "4.1", description: "Worker, limites e retentativas"}
+        - {item_id: "7.1", description: "Provedor real e entregabilidade"}
+  - req_id: "RNF-04"
+    req_description: "Segredos, webhooks e tokens seguros"
+    priority: "M"
+    plan_mapping:
+      phase: "Fase-1/Fase-5/Fase-7"
+      phase_name: "Setup, segurança e validação"
+      items:
+        - {item_id: "1.2", description: "Configuração, saúde e documentação inicial"}
+        - {item_id: "5.1", description: "Adaptadores e processamento de eventos"}
+        - {item_id: "5.2", description: "Supressão e one-click unsubscribe"}
+        - {item_id: "7.2", description: "Qualidade, privacidade e entrega final"}
+  - req_id: "RNF-05"
+    req_description: "LGPD, retenção configurável, exclusão e mascaramento"
+    priority: "M"
+    plan_mapping:
+      phase: "Fase-2/Fase-7"
+      phase_name: "Núcleo e validação"
+      items:
+        - {item_id: "2.1", description: "Persistência, templates e renderização"}
+        - {item_id: "7.2", description: "Qualidade, privacidade e entrega final"}
+  - req_id: "RNF-06"
+    req_description: "Logs estruturados e métricas por etapa"
+    priority: "M"
+    plan_mapping:
+      phase: "Fase-1/Fase-6"
+      phase_name: "Setup e operação"
+      items:
+        - {item_id: "1.2", description: "Configuração, saúde e documentação inicial"}
+        - {item_id: "6.2", description: "Verificação de domínio e indicadores"}
+  - req_id: "RNF-07"
+    req_description: "Docker Compose sobe API, worker, banco, Redis e Mailpit"
+    priority: "M"
+    plan_mapping:
+      phase: "Fase-1"
+      phase_name: "Setup e ambiente local"
+      items: [{item_id: "1.1", description: "Repositório executável"}]
+  - req_id: "RNF-08"
+    req_description: "Testes automatizados e cobertura mínima de 80% nos módulos críticos"
+    priority: "M"
+    plan_mapping:
+      phase: "Fase-7"
+      phase_name: "Validação e entrega"
+      items: [{item_id: "7.2", description: "Qualidade, privacidade e entrega final"}]
+  - req_id: "RNF-09"
+    req_description: "Renderização compatível com clientes de e-mail"
+    priority: "M"
+    plan_mapping:
+      phase: "Fase-2/Fase-7"
+      phase_name: "Templates e staging"
+      items:
+        - {item_id: "2.1", description: "Persistência, templates e renderização"}
+        - {item_id: "7.1", description: "Provedor real e entregabilidade"}
+  - req_id: "RNF-10"
+    req_description: "Acessibilidade, texto alternativo e versão simples"
+    priority: "M"
+    plan_mapping:
+      phase: "Fase-2/Fase-7"
+      phase_name: "Templates e staging"
+      items:
+        - {item_id: "2.1", description: "Persistência, templates e renderização"}
+        - {item_id: "7.1", description: "Provedor real e entregabilidade"}
+  - req_id: "RN-01"
+    req_description: "Promoção somente com consentimento/base compatível"
+    priority: "M"
+    plan_mapping:
+      phase: "Fase-3/Fase-5"
+      phase_name: "Consentimento e campanhas"
+      items:
+        - {item_id: "3.1", description: "Destinatários, CSV e consentimentos"}
+        - {item_id: "5.2", description: "Supressão e one-click unsubscribe"}
+  - req_id: "RN-02"
+    req_description: "Mensagens transacionais sem conteúdo promocional relevante"
+    priority: "M"
+    plan_mapping:
+      phase: "Fase-2/Fase-5"
+      phase_name: "Núcleo e campanhas"
+      items:
+        - {item_id: "2.1", description: "Persistência, templates e renderização"}
+        - {item_id: "5.2", description: "Supressão e one-click unsubscribe"}
+  - req_id: "RN-03"
+    req_description: "Hard bounce/reclamação imediatos; soft bounce após 3 falhas"
+    priority: "M"
+    plan_mapping:
+      phase: "Fase-5"
+      phase_name: "Webhooks, supressão e descadastro"
+      items:
+        - {item_id: "5.1", description: "Adaptadores e processamento de eventos"}
+        - {item_id: "5.2", description: "Supressão e one-click unsubscribe"}
+  - req_id: "RN-04"
+    req_description: "Descadastro imediato e sem login"
+    priority: "M"
+    plan_mapping:
+      phase: "Fase-5"
+      phase_name: "Webhooks, supressão e descadastro"
+      items: [{item_id: "5.2", description: "Supressão e one-click unsubscribe"}]
+  - req_id: "RN-05"
+    req_description: "Identificação da empresa em mensagens promocionais"
+    priority: "M"
+    plan_mapping:
+      phase: "Fase-2/Fase-5"
+      phase_name: "Templates e campanhas"
+      items:
+        - {item_id: "2.1", description: "Persistência, templates e renderização"}
+        - {item_id: "5.2", description: "Supressão e one-click unsubscribe"}
+  - req_id: "RN-06"
+    req_description: "Domínio do From alinhado ao domínio autenticado"
+    priority: "M"
+    plan_mapping:
+      phase: "Fase-2/Fase-7"
+      phase_name: "Núcleo e staging"
+      items:
+        - {item_id: "2.2", description: "API transacional e idempotência"}
+        - {item_id: "7.1", description: "Provedor real e entregabilidade"}
+  - req_id: "RN-07"
+    req_description: "Unicidade de campanha, destinatário e ocorrência"
+    priority: "M"
+    plan_mapping:
+      phase: "Fase-2/Fase-3"
+      phase_name: "Idempotência e agendamento"
+      items:
+        - {item_id: "2.2", description: "API transacional e idempotência"}
+        - {item_id: "3.2", description: "Campanhas programadas e janela de envio"}
+  - req_id: "RN-08"
+    req_description: "Janela padrão das 08h às 20h no fuso do destinatário"
+    priority: "M"
+    plan_mapping:
+      phase: "Fase-3"
+      phase_name: "Importação, consentimento e lembretes"
+      items: [{item_id: "3.2", description: "Campanhas programadas e janela de envio"}]
+  - req_id: "RN-09"
+    req_description: "Respeitar limites por segundo e por dia do provedor"
+    priority: "M"
+    plan_mapping:
+      phase: "Fase-4"
+      phase_name: "Processamento confiável"
+      items: [{item_id: "4.1", description: "Worker, limites e retentativas"}]
+  - req_id: "RN-10"
+    req_description: "Pausar promoção e avisar operador acima dos limites reputacionais"
+    priority: "M"
+    plan_mapping:
+      phase: "Fase-4/Fase-5"
+      phase_name: "Reputação e webhooks"
+      items:
+        - {item_id: "4.2", description: "Pausa, warm-up e proteção de reputação"}
+        - {item_id: "5.1", description: "Adaptadores e processamento de eventos"}
+  - req_id: "RN-11"
+    req_description: "Lembretes de cobrança em linguagem neutra"
+    priority: "M"
+    plan_mapping:
+      phase: "Fase-2"
+      phase_name: "Núcleo transacional"
+      items: [{item_id: "2.1", description: "Persistência, templates e renderização"}]
+  - req_id: "RN-12"
+    req_description: "Limitar tamanho/tipos de anexos e preferir link expirável para sensíveis"
+    priority: "M"
+    plan_mapping:
+      phase: "Fase-2/Fase-6"
+      phase_name: "Templates e relatórios"
+      items:
+        - {item_id: "2.1", description: "Persistência, templates e renderização"}
+        - {item_id: "6.1", description: "Relatórios agendados e anexos"}
+
+missing_requirements: []
+orphan_plan_items: []
+
+validation:
+  passed: true
+  errors: []
+  warnings:
+    - "A especificação usa RF/RNF/RN em vez de REQ-XXX; os identificadores originais foram preservados."
+    - "CA-01 a CA-15 são critérios de aceite e serão validados na Fase 7; não são requisitos independentes nesta matriz."

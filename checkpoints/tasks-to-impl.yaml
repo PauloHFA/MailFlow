@@ -1,0 +1,520 @@
+metadata:
+  generated: "2026-11-08"
+  source_tasks: "plan.md"
+  last_updated: "2026-11-08"
+
+summary:
+  total_tasks: 25
+  completed_tasks: 13
+  in_progress_tasks: 1
+  pending_tasks: 11
+  completion_percentage: 52.0
+
+tasks:
+  - task_id: "T001"
+    description: "Create the initial project structure and Python packaging."
+    status: "completed"
+    implementation:
+      files_changed:
+        - file: "pyproject.toml"
+          changes:
+            - change_type: "added"
+              description: "Python 3.12 package metadata, runtime/dev dependencies, pytest settings."
+        - file: ".gitignore"
+          changes:
+            - change_type: "added"
+              description: "Ignore Python build output, environments, and local secrets."
+        - file: ".dockerignore"
+          changes:
+            - change_type: "added"
+              description: "Exclude generated files and local configuration from image context."
+        - file: "README.md"
+          changes:
+            - change_type: "added"
+              description: "Document setup, local safe-send boundary, and endpoint usage."
+    verification:
+      build_passed: true
+      test_results:
+        command: "python -m pip install -e \".[dev]\""
+        passed: 1
+        failed: 0
+        skipped: 0
+        failures: []
+      notes: "Editable installation succeeded."
+    upstream_trace:
+      plan_item: "1.1"
+      requirements: ["RNF-07"]
+      full_trace: "RNF-07 → Phase-1.1 → T001 → pyproject.toml, README.md"
+  - task_id: "T002"
+    description: "Define Compose services and the initial Celery worker entrypoint."
+    status: "completed"
+    implementation:
+      files_changed:
+        - file: "docker-compose.yml"
+          changes:
+            - change_type: "added"
+              description: "Define API, worker, beat, PostgreSQL, Redis, and Mailpit."
+        - file: "Dockerfile"
+          changes:
+            - change_type: "added"
+              description: "Build the Python 3.12 application image."
+        - file: "src/worker.py"
+          changes:
+            - change_type: "added"
+              description: "Configure Celery broker and late acknowledgement."
+    verification:
+      build_passed: false
+      test_results:
+        command: "docker compose --env-file .env.example config --quiet"
+        passed: 1
+        failed: 0
+        skipped: 0
+        failures: []
+      notes: "Compose syntax is valid. Docker image build/container startup could not run because the Docker Desktop Linux engine is unavailable."
+    upstream_trace:
+      plan_item: "1.1"
+      requirements: ["RF-19", "RNF-07"]
+      full_trace: "RF-19,RNF-07 → Phase-1.1 → T002 → docker-compose.yml"
+  - task_id: "T003"
+    description: "Load environment settings and enforce the non-production recipient allowlist."
+    status: "completed"
+    implementation:
+      files_changed:
+        - file: "src/config.py"
+          changes:
+            - change_type: "added"
+              description: "Define typed environment settings and recipient safety validation."
+        - file: ".env.example"
+          changes:
+            - change_type: "added"
+              description: "List development variables without real credentials."
+    verification:
+      build_passed: true
+      test_results:
+        command: "python -m pytest tests/unit/test_config.py"
+        passed: 4
+        failed: 0
+        skipped: 0
+        failures: []
+      notes: "Unlisted recipients and an empty non-production allowlist are rejected."
+    upstream_trace:
+      plan_item: "1.2"
+      requirements: ["RNF-04", "RF-19"]
+      full_trace: "RNF-04,RF-19 → Phase-1.2 → T003 → src/config.py"
+  - task_id: "T004"
+    description: "Implement structured request logging and health/metrics endpoints."
+    status: "completed"
+    implementation:
+      files_changed:
+        - file: "src/logging_config.py"
+          changes:
+            - change_type: "added"
+              description: "Format request logs as JSON without recipient values or raw paths."
+        - file: "src/api/main.py"
+          changes:
+            - change_type: "added"
+              description: "Expose liveness and Prometheus metrics endpoints."
+        - file: "tests/integration/test_health.py"
+          changes:
+            - change_type: "added"
+              description: "Test health payload and HTTP metrics instrumentation."
+    verification:
+      build_passed: true
+      test_results:
+        command: "python -m pytest tests/integration/test_health.py; live curl.exe probes"
+        passed: 2
+        failed: 0
+        skipped: 0
+        failures: []
+      notes: "Both endpoints returned HTTP 200 from a running Uvicorn process."
+    upstream_trace:
+      plan_item: "1.2"
+      requirements: ["RNF-06", "RF-22"]
+      full_trace: "RNF-06,RF-22 → Phase-1.2 → T004 → src/api/main.py"
+  - task_id: "T005"
+    description: "Define recipient, template, message, event, and suppression models with migrations."
+    status: "completed"
+    implementation:
+      files_changed:
+        - file: "src/db/models.py"
+          changes:
+            - change_type: "added"
+              description: "Define typed entities, status constraints, indexes, and uniqueness rules."
+        - file: "src/db/session.py"
+          changes:
+            - change_type: "added"
+              description: "Provide cached SQLAlchemy engine/session factory."
+        - file: "migrations/versions/0001_initial_schema.py"
+          changes:
+            - change_type: "added"
+              description: "Create recipients, templates, messages, events, and suppressions."
+        - file: "migrations/env.py"
+          changes:
+            - change_type: "added"
+              description: "Configure Alembic from DATABASE_URL and ORM metadata."
+        - file: "alembic.ini"
+          changes:
+            - change_type: "added"
+              description: "Configure Alembic migration directory and logging."
+    verification:
+      build_passed: true
+      test_results:
+        command: "python -m pytest tests/integration/test_migrations.py; Alembic upgrade/check/downgrade on temporary SQLite"
+        passed: 1
+        failed: 0
+        skipped: 0
+        failures: []
+      notes: "Migration applies and downgrades; alembic check reports no ORM/schema drift."
+    upstream_trace:
+      plan_item: "2.1"
+      requirements: ["RF-02", "RF-07", "RNF-02"]
+      full_trace: "RF-02,RF-07,RNF-02 → Phase-2.1 → T005 → src/db/models.py,migrations/"
+  - task_id: "T006"
+    description: "Implement strict HTML/text template rendering and versioned template API."
+    status: "completed"
+    implementation:
+      files_changed:
+        - file: "src/rendering/templates.py"
+          changes:
+            - change_type: "added"
+              description: "Render with strict undefined variables, HTML escaping, and validation."
+        - file: "src/api/templates.py"
+          changes:
+            - change_type: "added"
+              description: "Create versions, retrieve templates, and render previews."
+        - file: "src/api/main.py"
+          changes:
+            - change_type: "modified"
+              description: "Register template and message routers."
+    verification:
+      build_passed: true
+      test_results:
+        command: "python -m pytest tests/unit/test_templates.py tests/integration/test_messages.py::test_template_create_preview_and_versioning"
+        passed: 8
+        failed: 0
+        skipped: 0
+        failures: []
+      notes: "Missing variables and undeclared variables fail before enqueue; HTML image tags require alt attributes."
+    upstream_trace:
+      plan_item: "2.1"
+      requirements: ["RF-02", "RF-03", "RNF-10"]
+      full_trace: "RF-02,RF-03,RNF-10 → Phase-2.1 → T006 → src/rendering/templates.py,src/api/templates.py"
+  - task_id: "T007"
+    description: "Add template rendering and validation tests."
+    status: "completed"
+    implementation:
+      files_changed:
+        - file: "tests/unit/test_templates.py"
+          changes:
+            - change_type: "added"
+              description: "Cover HTML/text output, escaping, required/declaration checks, header injection, and image alt text."
+    verification:
+      build_passed: true
+      test_results:
+        command: "python -m pytest tests/unit/test_templates.py"
+        passed: 7
+        failed: 0
+        skipped: 0
+        failures: []
+      notes: "All focused template tests pass."
+    upstream_trace:
+      plan_item: "2.1"
+      requirements: ["RF-03", "RNF-10"]
+      full_trace: "RF-03,RNF-10 → Phase-2.1 → T007 → tests/unit/test_templates.py"
+  - task_id: "T008"
+    description: "Define the provider contract and Mailpit SMTP adapter."
+    status: "completed"
+    implementation:
+      files_changed:
+        - file: "src/providers/base.py"
+          changes:
+            - change_type: "added"
+              description: "Define provider protocol and message/result data types."
+        - file: "src/providers/smtp.py"
+          changes:
+            - change_type: "added"
+              description: "Build and submit safe multipart SMTP messages to Mailpit."
+    verification:
+      build_passed: true
+      test_results:
+        command: "python -m pytest tests/unit/test_providers.py"
+        passed: 3
+        failed: 0
+        skipped: 0
+        failures: []
+      notes: "Verified multipart rendering and recipient/header safety; live Mailpit unavailable without Docker."
+    upstream_trace:
+      plan_item: "2.2"
+      requirements: ["RF-01"]
+      full_trace: "RF-01 → Phase-2.2 → T008 → src/providers/base.py,src/providers/smtp.py"
+  - task_id: "T009"
+    description: "Implement the transactional send API, persistence, idempotency, and status query."
+    status: "completed"
+    implementation:
+      files_changed:
+        - file: "src/api/messages.py"
+          changes:
+            - change_type: "added"
+              description: "Persist and enqueue validated transactional messages with replay/conflict behavior."
+        - file: "src/api/dependencies.py"
+          changes:
+            - change_type: "added"
+              description: "Provide database, settings, and enqueue dependencies."
+        - file: "src/queue/dispatch.py"
+          changes:
+            - change_type: "added"
+              description: "Dispatch persisted message IDs through Celery."
+        - file: "tests/integration/test_messages.py"
+          changes:
+            - change_type: "added"
+              description: "Test templates, send validation, idempotency, status lookup, and broker failure retry."
+    verification:
+      build_passed: true
+      test_results:
+        command: "python -m pytest tests/integration/test_messages.py"
+        passed: 9
+        failed: 0
+        skipped: 0
+        failures: []
+      notes: "Validated API behavior with FastAPI TestClient and isolated SQLite database."
+    upstream_trace:
+      plan_item: "2.2"
+      requirements: ["RF-01", "RF-07", "RNF-02"]
+      full_trace: "RF-01,RF-07,RNF-02 → Phase-2.2 → T009 → src/api/messages.py"
+  - task_id: "T010"
+    description: "Import and validate recipient CSV files."
+    status: "completed"
+    implementation:
+      files_changed:
+        - file: "src/consent/import_csv.py"
+          changes:
+            - change_type: "added"
+              description: "Normalize addresses and validate CSV rows, duplicate emails, IANA timezones, and explicit consent fields."
+        - file: "src/api/recipients.py"
+          changes:
+            - change_type: "added"
+              description: "Expose bounded CSV upload and return imported, duplicate, and rejected row details."
+        - file: "tests/integration/test_recipients_campaigns.py"
+          changes:
+            - change_type: "added"
+              description: "Cover CSV normalization, duplicates, malformed headers, invalid addresses, and consent completeness."
+    verification:
+      build_passed: true
+      test_results:
+        command: "python -m pytest tests/integration/test_recipients_campaigns.py tests/unit/test_scheduling.py tests/integration/test_migrations.py"
+        passed: 20
+        failed: 0
+        skipped: 0
+        failures: []
+      notes: "Full suite passes; live POST /api/v1/recipients/import returned 200 using a temporary SQLite database."
+    upstream_trace:
+      plan_item: "3.1"
+      requirements: ["RF-04", "RF-14", "RN-01"]
+      full_trace: "RF-04,RF-14,RN-01 → Phase-3.1 → T010 → src/consent/import_csv.py,src/api/recipients.py"
+  - task_id: "T011"
+    description: "Record and revoke recipient consent."
+    status: "completed"
+    implementation:
+      files_changed:
+        - file: "src/db/models.py"
+          changes:
+            - change_type: "modified"
+              description: "Persist consent purpose, legal basis, source, registration timestamp, and revocation timestamp."
+        - file: "migrations/versions/0002_recipients_consent_campaigns.py"
+          changes:
+            - change_type: "added"
+              description: "Create consent persistence and campaign scheduling tables."
+        - file: "src/api/recipients.py"
+          changes:
+            - change_type: "modified"
+              description: "Create and revoke consent records; CSV imports do not infer consent."
+        - file: "tests/integration/test_recipients_campaigns.py"
+          changes:
+            - change_type: "modified"
+              description: "Cover explicit consent import, incomplete consent, recording, and revocation."
+    verification:
+      build_passed: true
+      test_results:
+        command: "python -m pytest tests/integration/test_recipients_campaigns.py tests/unit/test_scheduling.py tests/integration/test_migrations.py"
+        passed: 20
+        failed: 0
+        skipped: 0
+        failures: []
+      notes: "Full suite passes; live consent create and revoke endpoints returned 201 and 200."
+    upstream_trace:
+      plan_item: "3.1"
+      requirements: ["RF-04", "RF-14", "RN-01"]
+      full_trace: "RF-04,RF-14,RN-01 → Phase-3.1 → T011 → src/db/models.py,src/api/recipients.py"
+  - task_id: "T012"
+    description: "Create campaigns and per-recipient reminder schedules."
+    status: "completed"
+    implementation:
+      files_changed:
+        - file: "src/api/campaigns.py"
+          changes:
+            - change_type: "added"
+              description: "Validate recipients/templates and create one-time or relative schedules per recipient."
+        - file: "src/db/models.py"
+          changes:
+            - change_type: "modified"
+              description: "Persist campaign lifecycle, message classification, schedule rules, timezone, and dispatch state."
+        - file: "src/api/main.py"
+          changes:
+            - change_type: "modified"
+              description: "Register recipient and campaign routers."
+        - file: "tests/integration/test_recipients_campaigns.py"
+          changes:
+            - change_type: "modified"
+              description: "Cover campaign scheduling, recipient suppression, and promotional delivery safety."
+    verification:
+      build_passed: true
+      test_results:
+        command: "python -m pytest tests/integration/test_recipients_campaigns.py tests/unit/test_scheduling.py tests/integration/test_migrations.py"
+        passed: 20
+        failed: 0
+        skipped: 0
+        failures: []
+      notes: "Live transactional campaign creation returned 201. Promotional campaign creation returns 422 until one-click unsubscribe and provider-suppression webhooks are implemented."
+    upstream_trace:
+      plan_item: "3.2"
+      requirements: ["RF-05", "RN-08"]
+      full_trace: "RF-05,RN-08 → Phase-3.2 → T012 → src/api/campaigns.py,src/db/models.py"
+  - task_id: "T013"
+    description: "Dispatch idempotent scheduled occurrences within recipient-local send windows."
+    status: "completed"
+    implementation:
+      files_changed:
+        - file: "src/scheduler/windows.py"
+          changes:
+            - change_type: "added"
+              description: "Calculate one-time and relative reminder times in IANA zones and enforce the local send window."
+        - file: "src/scheduler/dispatch.py"
+          changes:
+            - change_type: "added"
+              description: "Create deterministic idempotency keys, recheck campaign/recipient/consent state, and publish due occurrences."
+        - file: "src/worker.py"
+          changes:
+            - change_type: "modified"
+              description: "Schedule due reminder scans through Celery Beat."
+        - file: "tests/unit/test_scheduling.py"
+          changes:
+            - change_type: "added"
+              description: "Cover local windows, relative reminders, invalid timezones, and timezone-aware values."
+        - file: "tests/integration/test_recipients_campaigns.py"
+          changes:
+            - change_type: "modified"
+              description: "Cover idempotent due dispatch, revoked consent, and retry after broker failure."
+    verification:
+      build_passed: true
+      test_results:
+        command: "python -m pytest tests/integration/test_recipients_campaigns.py tests/unit/test_scheduling.py tests/integration/test_migrations.py"
+        passed: 20
+        failed: 0
+        skipped: 0
+        failures: []
+      notes: "Full suite passes; migration upgrade/check/downgrade succeeds on temporary SQLite with no ORM drift."
+    upstream_trace:
+      plan_item: "3.2"
+      requirements: ["RF-05", "RN-08"]
+      full_trace: "RF-05,RN-08 → Phase-3.2 → T013 → src/scheduler/windows.py,src/scheduler/dispatch.py"
+  - task_id: "T014"
+    description: "Implement queued-message processing through the provider."
+    status: "in-progress"
+    implementation:
+      files_changed:
+        - file: "src/worker.py"
+          changes:
+            - change_type: "added"
+              description: "Claim queued message, recheck suppression, render, send and persist outcome."
+    verification:
+      build_passed: true
+      test_results:
+        command: "python -m pytest tests/integration/test_worker.py"
+        passed: 2
+        failed: 0
+        skipped: 0
+        failures: []
+      notes: "Basic send flow is implemented; rate limiting and retry policy remain pending in T015."
+    upstream_trace:
+      plan_item: "4.1"
+      requirements: ["RF-06", "RF-08", "RNF-02"]
+      full_trace: "RF-06,RF-08,RNF-02 → Phase-4.1 → T014 → src/worker.py (partial)"
+
+pending_tasks:
+  - {task_id: "T015", blocked_by: ["T014"], priority: "P1"}
+  - {task_id: "T016", blocked_by: ["T012"], priority: "P1"}
+  - {task_id: "T017", blocked_by: ["T015"], priority: "P1"}
+  - {task_id: "T018", blocked_by: ["T008"], priority: "P1"}
+  - {task_id: "T019", blocked_by: ["T018"], priority: "P1"}
+  - {task_id: "T020", blocked_by: ["T005"], priority: "P1"}
+  - {task_id: "T021", blocked_by: ["T020"], priority: "P1"}
+  - {task_id: "T022", blocked_by: ["T006", "T012"], priority: "P2"}
+  - {task_id: "T023", blocked_by: ["T005"], priority: "P2"}
+  - {task_id: "T024", blocked_by: ["T008"], priority: "P2"}
+  - {task_id: "T025", blocked_by: ["T005", "T009", "T015", "T021"], priority: "P1"}
+
+untracked_changes: []
+traceability_chain:
+  - chain_id: "TRACE-RNF-07"
+    requirement: "RNF-07"
+    plan_phase: "Phase-1"
+    plan_item: "1.1"
+    tasks: ["T001", "T002"]
+    files: ["pyproject.toml", "docker-compose.yml", "Dockerfile"]
+    status: "partial"
+  - chain_id: "TRACE-RF-19"
+    requirement: "RF-19"
+    plan_phase: "Phase-1"
+    plan_item: "1.1"
+    tasks: ["T002", "T003"]
+    files: ["docker-compose.yml", "src/config.py"]
+    status: "partial"
+  - chain_id: "TRACE-RNF-04"
+    requirement: "RNF-04"
+    plan_phase: "Phase-1"
+    plan_item: "1.2"
+    tasks: ["T003"]
+    files: ["src/config.py"]
+    status: "partial"
+  - chain_id: "TRACE-RNF-06-RF-22"
+    requirement: "RNF-06/RF-22"
+    plan_phase: "Phase-1"
+    plan_item: "1.2"
+    tasks: ["T004"]
+    files: ["src/logging_config.py", "src/api/main.py"]
+    status: "partial"
+  - chain_id: "TRACE-RF-01-RF-07"
+    requirement: "RF-01/RF-07"
+    plan_phase: "Phase-2"
+    plan_item: "2.2"
+    tasks: ["T008", "T009"]
+    files: ["src/providers/base.py", "src/providers/smtp.py", "src/api/messages.py"]
+    status: "partial"
+  - chain_id: "TRACE-RF-02-RF-03"
+    requirement: "RF-02/RF-03"
+    plan_phase: "Phase-2"
+    plan_item: "2.1"
+    tasks: ["T005", "T006", "T007"]
+    files: ["src/db/models.py", "src/api/templates.py", "src/rendering/templates.py"]
+    status: "partial"
+  - chain_id: "TRACE-RF-04-RF-14-RN-01"
+    requirement: "RF-04/RF-14/RN-01"
+    plan_phase: "Phase-3"
+    plan_item: "3.1"
+    tasks: ["T010", "T011"]
+    files: ["src/consent/import_csv.py", "src/api/recipients.py", "src/db/models.py"]
+    status: "completed"
+  - chain_id: "TRACE-RF-05-RN-08"
+    requirement: "RF-05/RN-08"
+    plan_phase: "Phase-3"
+    plan_item: "3.2"
+    tasks: ["T012", "T013"]
+    files: ["src/api/campaigns.py", "src/scheduler/windows.py", "src/scheduler/dispatch.py"]
+    status: "completed"
+
+validation:
+  passed: true
+  errors: []
+  warnings:
+    - "Docker Compose container startup and live Mailpit delivery remain unverified because the Docker Desktop Linux engine is unavailable; Compose configuration is valid and live API endpoints were probed with temporary SQLite."
+  blocking_issues: []

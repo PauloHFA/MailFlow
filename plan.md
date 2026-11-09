@@ -164,20 +164,20 @@ Não foram encontrados arquivos de diretrizes de migração (`skills/guidelines/
 
 ### Fase 5 — Webhooks, supressão e descadastro (US3)
 
-- [ ] T018 [Plan:5.1] Implementar parsing e validação de assinatura de webhook em `src/providers/webhook.py` e `src/api/webhooks.py`.
-- [ ] T019 [Plan:5.1] Normalizar eventos e processá-los idempotentemente em `src/suppression/events.py`; cobrir payloads válidos, inválidos e duplicados em `tests/contract/test_webhooks.py`.
-- [ ] T020 [Plan:5.2] Implementar regras de supressão para hard bounce, reclamação e soft bounce após três falhas em `src/suppression/service.py`.
-- [ ] T021 [Plan:5.2] Implementar tokens assinados, endpoint GET/POST sem login e cabeçalhos one-click em `src/api/unsubscribe.py` e `src/providers/headers.py`; validar CA-10/CA-11 em `tests/integration/test_unsubscribe.py`.
+- [x] T018 [Plan:5.1] Implementar parsing e validação de assinatura de webhook em `src/providers/webhook.py` e `src/api/webhooks.py`.
+- [x] T019 [Plan:5.1] Normalizar eventos e processá-los idempotentemente em `src/suppression/events.py`; cobrir payloads válidos, inválidos e duplicados em `tests/contract/test_webhooks.py`.
+- [x] T020 [Plan:5.2] Implementar regras de supressão para hard bounce, reclamação e soft bounce após três falhas em `src/suppression/service.py`.
+- [x] T021 [Plan:5.2] Implementar tokens assinados, endpoint GET/POST sem login e cabeçalhos one-click em `src/api/unsubscribe.py` e `src/providers/headers.py`; validar CA-10/CA-11 em `tests/contract/test_webhooks.py`.
 
 ### Fase 6 — Relatórios, domínio e operação (US4)
 
-- [ ] T022 [Plan:6.1] Implementar geração/agendamento de PDF e validação de tamanho/tipo do anexo em `src/rendering/pdf.py` e `src/scheduler/reports.py`; cobrir CA-14 em `tests/integration/test_reports.py`.
-- [ ] T023 [Plan:6.2] Implementar verificação DNS e APIs de domínio, métricas e exportação CSV em `src/domain/checks.py`, `src/api/domain.py`, `src/api/metrics.py` e `src/api/exports.py`; adicionar testes correspondentes em `tests/unit/` e `tests/integration/`.
+- [x] T022 [Plan:6.1] Implementar geração/agendamento de PDF e validação de tamanho/tipo do anexo em `src/rendering/pdf.py` e `src/scheduler/reports.py`; cobrir CA-14 em `tests/integration/test_operations.py`.
+- [x] T023 [Plan:6.2] Implementar verificação DNS e APIs de domínio, métricas e exportação CSV em `src/domain/checks.py`, `src/api/domain.py`, `src/api/metrics.py` e `src/api/exports.py`; adicionar testes correspondentes em `tests/unit/` e `tests/integration/`.
 
 ### Fase 7 — Staging e entrega
 
-- [ ] T024 [Plan:7.1] Implementar adaptadores Resend/Brevo em `src/providers/resend.py` e `src/providers/brevo.py`; comparar staging autenticado e registrar resultado em `docs/provider-evaluation.md`.
-- [ ] T025 [Plan:7.2] Completar testes de integração, segurança, carga, retenção e cobertura; validar Compose, checklist de entregabilidade e critérios de aceite; atualizar `docs/` e OpenAPI.
+- [ ] T024 [Plan:7.1] Implementar adaptadores Resend/Brevo em `src/providers/resend.py` e `src/providers/brevo.py`; comparar staging autenticado e registrar resultado em `docs/provider-evaluation.md`. Adaptadores e testes locais concluídos; comparação real aguarda credenciais, domínio verificado e caixas de teste.
+- [ ] T025 [Plan:7.2] Completar testes de integração, segurança, carga, retenção e cobertura; validar Compose, checklist de entregabilidade e critérios de aceite; atualizar `docs/` e OpenAPI. Validações locais concluídas; itens manuais de inbox/renderização dependem do staging real.
 
 ## Estrutura Proposta
 

@@ -12,20 +12,24 @@ from src.config import Settings
 from src.db.models import (
     Campaign,
     CampaignStatus,
+    Consent,
     EmailTemplate,
     Message,
     MessageEvent,
     MessageStatus,
+    MessageType,
     Recipient,
     RecipientStatus,
     Suppression,
 )
 from src.providers.base import EmailPayload, EmailProvider
-from src.providers.smtp import MailpitSMTPProvider
+from src.providers.factory import build_email_provider, rate_limit_provider_name
+from src.providers.headers import promotional_unsubscribe_headers
 from src.queue.rate_limit import RateLimitExceeded, RedisRateLimiter
 from src.queue.retries import dead_letter_message, schedule_retry
 from src.queue.warmup import handle_reputation_signal, reserve_warmup_capacity
 from src.rendering.templates import TemplateValidationError, render_template
+from src.suppression.unsubscribe import create_unsubscribe_token
 
 logger = logging.getLogger("mailflow.worker")
 
@@ -169,6 +173,46 @@ def process_persisted_message(
             _permanent_failure(session, message, "Recipient is suppressed.")
             return
 
+        unsubscribe_headers: dict[str, str] = {}
+        if message.message_type == MessageType.PROMOTIONAL.value:
+            if (
+                campaign is None
+                or campaign.message_type != MessageType.PROMOTIONAL.value
+                or campaign.purpose is None
+            ):
+                _permanent_failure(session, message, "Promotional message has no consent purpose.")
+                return
+            consent = session.scalar(
+                select(Consent)
+                .where(
+                    Consent.recipient_id == recipient.id,
+                    Consent.purpose == campaign.purpose,
+                    Consent.registered_at <= current_time,
+                    Consent.revoked_at.is_(None),
+                )
+                .order_by(Consent.registered_at.desc())
+                .limit(1)
+            )
+            if consent is None:
+                _permanent_failure(session, message, "Promotional consent is not active.")
+                return
+            try:
+                unsubscribe_headers = promotional_unsubscribe_headers(
+                    create_unsubscribe_token(
+                        consent.id,
+                        settings.unsubscribe_signing_secret,
+                        now=current_time,
+                    ),
+                    settings,
+                )
+            except ValueError:
+                _permanent_failure(
+                    session,
+                    message,
+                    "Promotional unsubscribe signing is not configured.",
+                )
+                return
+
         try:
             rendered = render_template(
                 subject=template.subject,
@@ -186,7 +230,7 @@ def process_persisted_message(
         try:
             reserve_warmup_capacity(redis, domain, settings, now=current_time)
             rate_limiter.reserve(
-                "mailpit-smtp",
+                rate_limit_provider_name(settings),
                 domain,
                 settings,
                 now=current_time,
@@ -246,7 +290,7 @@ def process_persisted_message(
         session.commit()
         session.refresh(message)
 
-        current_provider = provider or MailpitSMTPProvider(settings)
+        current_provider = provider or build_email_provider(settings)
         try:
             result = current_provider.send(
                 EmailPayload(
@@ -255,6 +299,7 @@ def process_persisted_message(
                     subject=rendered.subject,
                     html_body=rendered.html_body,
                     text_body=rendered.text_body,
+                    headers=unsubscribe_headers,
                 )
             )
         except (OSError, TimeoutError, ConnectionError, smtplib.SMTPException, ValueError) as error:

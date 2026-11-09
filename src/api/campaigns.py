@@ -7,11 +7,14 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from src.api.dependencies import get_db
+from src.api.dependencies import get_db, get_settings
+from src.config import Settings
+from src.providers.headers import validate_unsubscribe_base_url
 from src.db.models import (
     Campaign,
     CampaignSchedule,
     CampaignStatus,
+    Consent,
     EmailTemplate,
     MessageType,
     Recipient,
@@ -86,6 +89,7 @@ class CampaignCreate(BaseModel):
 def create_campaign(
     payload: CampaignCreate,
     session: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ) -> dict[str, object]:
     template = session.get(EmailTemplate, payload.template_id)
     if template is None:
@@ -96,13 +100,18 @@ def create_campaign(
             detail="Campaign message type must match its template.",
         )
     if payload.message_type == MessageType.PROMOTIONAL.value:
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                "Promotional campaigns are disabled until one-click unsubscribe "
-                "and provider suppression webhooks are implemented."
-            ),
-        )
+        if len(settings.unsubscribe_signing_secret.encode("utf-8")) < 32:
+            raise HTTPException(
+                status_code=503,
+                detail="Promotional unsubscribe signing is not configured.",
+            )
+        try:
+            validate_unsubscribe_base_url(settings)
+        except ValueError as error:
+            raise HTTPException(
+                status_code=503,
+                detail="Promotional unsubscribe URL is not configured safely.",
+            ) from error
 
     recipients = session.scalars(
         select(Recipient).where(Recipient.id.in_(payload.recipient_ids))
@@ -115,6 +124,20 @@ def create_campaign(
     for recipient in recipients:
         if recipient.status != RecipientStatus.ACTIVE.value:
             raise HTTPException(status_code=422, detail="Campaign includes a suppressed recipient.")
+        if payload.message_type == MessageType.PROMOTIONAL.value:
+            has_consent = session.scalar(
+                select(Consent.id).where(
+                    Consent.recipient_id == recipient.id,
+                    Consent.purpose == payload.purpose,
+                    Consent.registered_at <= now,
+                    Consent.revoked_at.is_(None),
+                )
+            )
+            if has_consent is None:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Campaign includes a recipient without current consent.",
+                )
 
     campaign = Campaign(
         name=payload.name,

@@ -5,10 +5,10 @@ metadata:
 
 summary:
   total_tasks: 25
-  completed_tasks: 17
+  completed_tasks: 23
   in_progress_tasks: 0
-  pending_tasks: 8
-  completion_percentage: 68.0
+  pending_tasks: 2
+  completion_percentage: 92.0
 
 tasks:
   - task_id: "T001"
@@ -556,21 +556,399 @@ tasks:
         failed: 0
         skipped: 0
         failures: []
-      notes: "Reputation breaches emit a critical operator log. Bounce/complaint event ingestion will be wired in Phase 5."
+      notes: "Reputation breaches emit a critical operator log; Phase 5 connects signed provider feedback events to this pause policy."
     upstream_trace:
       plan_item: "4.2"
       requirements: ["RF-20", "RN-10"]
       full_trace: "RF-20,RN-10 → Phase-4.2 → T017 → src/queue/warmup.py"
+  - task_id: "T018"
+    description: "Validate signed, timestamped provider webhook requests."
+    status: "completed"
+    implementation:
+      files_changed:
+        - file: "src/providers/webhook.py"
+          changes:
+            - change_type: "added"
+              description: "Verify HMAC-SHA256 signatures with timestamp tolerance and validate canonical event payloads."
+        - file: "src/api/webhooks.py"
+          changes:
+            - change_type: "added"
+              description: "Add a bounded-body webhook endpoint that verifies signatures before parsing or persistence."
+        - file: "src/config.py"
+          changes:
+            - change_type: "modified"
+              description: "Configure webhook signing secret and anti-replay timestamp tolerance."
+        - file: "tests/contract/test_webhooks.py"
+          changes:
+            - change_type: "added"
+              description: "Verify invalid, expired, and malformed webhook requests do not create events."
+    verification:
+      build_passed: true
+      test_results:
+        command: "python -m pytest -q"
+        passed: 71
+        failed: 0
+        skipped: 0
+        failures: []
+      notes: "Signatures are checked against exact request bytes before event parsing; missing secrets fail closed."
+    upstream_trace:
+      plan_item: "5.1"
+      requirements: ["RF-09", "RNF-04", "RN-03", "RN-10"]
+      full_trace: "RF-09,RNF-04,RN-03,RN-10 → Phase-5.1 → T018 → src/providers/webhook.py,src/api/webhooks.py"
+  - task_id: "T019"
+    description: "Normalize and persist provider events idempotently."
+    status: "completed"
+    implementation:
+      files_changed:
+        - file: "src/suppression/events.py"
+          changes:
+            - change_type: "added"
+              description: "Resolve message events, deduplicate provider event IDs, and commit event/reputation effects atomically."
+        - file: "src/db/models.py"
+          changes:
+            - change_type: "modified"
+              description: "Store provider event identity and receipt time with a uniqueness constraint."
+        - file: "migrations/versions/0004_provider_webhooks.py"
+          changes:
+            - change_type: "added"
+              description: "Add provider event identity columns and idempotency constraint."
+        - file: "tests/contract/test_webhooks.py"
+          changes:
+            - change_type: "modified"
+              description: "Cover valid events, malformed payloads, and duplicate provider event IDs."
+    verification:
+      build_passed: true
+      test_results:
+        command: "python -m pytest -q"
+        passed: 71
+        failed: 0
+        skipped: 0
+        failures: []
+      notes: "Alembic upgrade/downgrade and event-column migration checks pass on temporary SQLite; receipt time breaks ties for same-timestamp bounce events."
+    upstream_trace:
+      plan_item: "5.1"
+      requirements: ["RF-09", "RNF-04", "RN-03", "RN-10"]
+      full_trace: "RF-09,RNF-04,RN-03,RN-10 → Phase-5.1 → T019 → src/suppression/events.py,migrations/versions/0004_provider_webhooks.py"
+  - task_id: "T020"
+    description: "Suppress recipients after hard bounce, complaint, or three consecutive soft bounces."
+    status: "completed"
+    implementation:
+      files_changed:
+        - file: "src/suppression/service.py"
+          changes:
+            - change_type: "added"
+              description: "Apply global suppression rules and reset soft-bounce streaks on delivery events."
+        - file: "src/api/webhooks.py"
+          changes:
+            - change_type: "modified"
+              description: "Process normalized provider events through suppression and reputation policy."
+        - file: "tests/contract/test_webhooks.py"
+          changes:
+            - change_type: "modified"
+              description: "Verify hard bounce, complaint, three soft bounces, and delivery reset behavior."
+    verification:
+      build_passed: true
+      test_results:
+        command: "python -m pytest -q"
+        passed: 71
+        failed: 0
+        skipped: 0
+        failures: []
+      notes: "Suppression writes are transactional with the idempotent provider event."
+    upstream_trace:
+      plan_item: "5.2"
+      requirements: ["RF-10", "RF-11", "RF-12", "RF-13", "RN-01", "RN-02", "RN-03", "RN-04", "RN-05"]
+      full_trace: "RF-10,RF-11,RF-12,RF-13,RN-01..RN-05 → Phase-5.2 → T020 → src/suppression/service.py"
+  - task_id: "T021"
+    description: "Add signed one-click unsubscribe links and recheck promotional consent before delivery."
+    status: "completed"
+    implementation:
+      files_changed:
+        - file: "src/suppression/unsubscribe.py"
+          changes:
+            - change_type: "added"
+              description: "Issue and verify expiring HMAC-signed consent-specific unsubscribe tokens."
+        - file: "src/api/unsubscribe.py"
+          changes:
+            - change_type: "added"
+              description: "Provide side-effect-free GET confirmation and strict idempotent RFC 8058 POST."
+        - file: "src/providers/headers.py"
+          changes:
+            - change_type: "added"
+              description: "Build safe List-Unsubscribe and List-Unsubscribe-Post headers."
+        - file: "src/queue/tasks.py"
+          changes:
+            - change_type: "modified"
+              description: "Recheck active consent in the worker and include one-click headers on promotional messages."
+        - file: "src/api/campaigns.py"
+          changes:
+            - change_type: "modified"
+              description: "Enable promotional campaign creation only with active purpose-matched consent and safe token configuration."
+        - file: "tests/integration/test_worker.py"
+          changes:
+            - change_type: "modified"
+              description: "Verify one-click headers and worker blocking after consent revocation."
+        - file: "tests/contract/test_webhooks.py"
+          changes:
+            - change_type: "modified"
+              description: "Verify GET safety, consent-specific POST revocation, tamper rejection, and expiry."
+        - file: "README.md"
+          changes:
+            - change_type: "modified"
+              description: "Document webhook HMAC contract, secret configuration, suppression policy, and RFC 8058 flow."
+    verification:
+      build_passed: true
+      test_results:
+        command: "python -m pytest -q"
+        passed: 71
+        failed: 0
+        skipped: 0
+        failures: []
+      notes: "Transactional consent remains active on promotional unsubscribe; production unsubscribe URLs must use HTTPS."
+    upstream_trace:
+      plan_item: "5.2"
+      requirements: ["RF-10", "RF-11", "RF-12", "RF-13", "RN-01", "RN-02", "RN-03", "RN-04", "RN-05"]
+      full_trace: "RF-10,RF-11,RF-12,RF-13,RN-01..RN-05 → Phase-5.2 → T021 → src/api/unsubscribe.py,src/providers/headers.py,src/queue/tasks.py"
+  - task_id: "T022"
+    description: "Generate and schedule privacy-conscious daily PDF delivery reports."
+    status: "completed"
+    implementation:
+      files_changed:
+        - file: "src/rendering/pdf.py"
+          changes:
+            - change_type: "added"
+              description: "Create aggregate delivery PDFs and reject malformed or over-5-MB documents."
+        - file: "src/scheduler/reports.py"
+          changes:
+            - change_type: "added"
+              description: "Generate previous-24-hour metrics and send the report through EmailProvider."
+        - file: "src/providers/base.py"
+          changes:
+            - change_type: "modified"
+              description: "Add typed email attachment payloads."
+        - file: "src/providers/smtp.py"
+          changes:
+            - change_type: "modified"
+              description: "Attach only validated PDF files up to 5 MB total."
+        - file: "src/worker.py"
+          changes:
+            - change_type: "modified"
+              description: "Schedule daily report task at midnight UTC with explicit UTC Celery configuration."
+        - file: "docker-compose.yml"
+          changes:
+            - change_type: "modified"
+              description: "Configure optional reports and recipient for worker and Beat."
+        - file: "tests/integration/test_operations.py"
+          changes:
+            - change_type: "added"
+              description: "Verify daily report scheduling, PDF attachment, and missing-recipient failure."
+        - file: "tests/unit/test_pdf_reports.py"
+          changes:
+            - change_type: "added"
+              description: "Cover valid report generation and PDF size/content validation."
+    verification:
+      build_passed: true
+      test_results:
+        command: "python -m pytest -q"
+        passed: 95
+        failed: 0
+        skipped: 0
+        failures: []
+      notes: "Daily report delivery is disabled by default; reports contain aggregate counts only and non-production recipients remain allowlisted."
+    upstream_trace:
+      plan_item: "6.1"
+      requirements: ["RF-15", "RN-12"]
+      full_trace: "RF-15,RN-12 → Phase-6.1 → T022 → src/rendering/pdf.py,src/scheduler/reports.py,src/providers/smtp.py"
+  - task_id: "T023"
+    description: "Expose domain authentication checks, protected delivery metrics, and bounded CSV exports."
+    status: "completed"
+    implementation:
+      files_changed:
+        - file: "src/domain/checks.py"
+          changes:
+            - change_type: "added"
+              description: "Inspect SPF, DMARC, and selector-specific DKIM TXT records and list missing configuration."
+        - file: "src/api/domain.py"
+          changes:
+            - change_type: "added"
+              description: "Expose authenticated domain verification endpoint."
+        - file: "src/api/metrics.py"
+          changes:
+            - change_type: "added"
+              description: "Return bounded aggregate delivery statuses and event counts."
+        - file: "src/api/exports.py"
+          changes:
+            - change_type: "added"
+              description: "Export message and consent CSV with range/row limits and spreadsheet formula neutralization."
+        - file: "src/api/dependencies.py"
+          changes:
+            - change_type: "modified"
+              description: "Require a configured 32-byte bearer token for operational and personal-data APIs."
+        - file: "src/api/main.py"
+          changes:
+            - change_type: "modified"
+              description: "Register domain, delivery metrics, and CSV export routes."
+        - file: "pyproject.toml"
+          changes:
+            - change_type: "modified"
+              description: "Declare dnspython and ReportLab runtime dependencies."
+        - file: "tests/unit/test_domain_checks.py"
+          changes:
+            - change_type: "added"
+              description: "Test valid and missing DNS records and invalid domains/selectors without live DNS."
+        - file: "tests/integration/test_operations.py"
+          changes:
+            - change_type: "added"
+              description: "Cover token authorization, DNS/metrics/CSV API behavior, formula escaping, and range bounds."
+        - file: "README.md"
+          changes:
+            - change_type: "modified"
+              description: "Document scheduled reports, operational token, DNS checks, metrics, and CSV exports."
+        - file: ".env.example"
+          changes:
+            - change_type: "modified"
+              description: "Add operations token and optional report settings."
+    verification:
+      build_passed: true
+      test_results:
+        command: "python -m pytest -q"
+        passed: 95
+        failed: 0
+        skipped: 0
+        failures: []
+      notes: "Uvicorn probes returned 200 for health, domain check, delivery metrics, and both exports; DNS findings were returned without exposing TXT values."
+    upstream_trace:
+      plan_item: "6.2"
+      requirements: ["RF-16", "RF-18", "RF-21", "RF-22", "RNF-06"]
+      full_trace: "RF-16,RF-18,RF-21,RF-22,RNF-06 → Phase-6.2 → T023 → src/domain/checks.py,src/api/domain.py,src/api/metrics.py,src/api/exports.py"
+  - task_id: "T024"
+    description: "Add Resend and Brevo email adapters and compare authenticated staging deliverability."
+    status: "blocked"
+    implementation:
+      files_changed:
+        - file: "src/providers/http.py"
+          changes:
+            - change_type: "added"
+              description: "Share safe HTTP transport, allowlist/header/attachment checks, and transient/permanent failure mapping."
+        - file: "src/providers/resend.py"
+          changes:
+            - change_type: "added"
+              description: "Submit HTML/text email and PDF attachments through Resend's HTTP API."
+        - file: "src/providers/brevo.py"
+          changes:
+            - change_type: "added"
+              description: "Submit HTML/text email and PDF attachments through Brevo's SMTP API."
+        - file: "src/providers/factory.py"
+          changes:
+            - change_type: "added"
+              description: "Select provider from EMAIL_PROVIDER and use provider-specific rate-limit keys."
+        - file: "src/config.py"
+          changes:
+            - change_type: "modified"
+              description: "Add validated provider selection and masked API key settings."
+        - file: "src/queue/tasks.py"
+          changes:
+            - change_type: "modified"
+              description: "Route message sends through the selected provider adapter."
+        - file: "src/scheduler/reports.py"
+          changes:
+            - change_type: "modified"
+              description: "Route scheduled reports through the selected provider adapter."
+        - file: "src/worker.py"
+          changes:
+            - change_type: "modified"
+              description: "Configure selected providers for queued sends and reports."
+        - file: "docker-compose.yml"
+          changes:
+            - change_type: "modified"
+              description: "Pass provider selection and secret environment variables to services."
+        - file: "tests/unit/test_http_providers.py"
+          changes:
+            - change_type: "added"
+              description: "Cover provider payload contracts, auth, retries, rejection, attachments, and allowlist behavior."
+        - file: "docs/provider-evaluation.md"
+          changes:
+            - change_type: "added"
+              description: "Document adapter comparison and the uncompleted authenticated staging checklist."
+    verification:
+      build_passed: true
+      test_results:
+        command: "python -m pytest -q tests/unit/test_http_providers.py"
+        passed: 18
+        failed: 0
+        skipped: 0
+        failures: []
+      notes: "Mocked HTTP contract tests pass. No authenticated staging run was possible without provider accounts/API keys, a verified sender domain, and controlled inboxes."
+    blocker: "Run both adapters against real authenticated staging accounts and complete domain alignment/inbox checks; no credentials, verified sender domain, or staging inboxes are available in the workspace."
+    upstream_trace:
+      plan_item: "7.1"
+      requirements: ["RF-16", "RNF-01", "RNF-03", "RNF-09", "RNF-10", "RN-06", "RN-09", "RN-10"]
+      full_trace: "RF-16,RNF-01,RNF-03,RNF-09,RNF-10,RN-06,RN-09,RN-10 → Phase-7.1 → T024 → src/providers/resend.py,src/providers/brevo.py"
+  - task_id: "T025"
+    description: "Complete final integration, security, load, privacy, Compose, deliverability, and OpenAPI validation."
+    status: "blocked"
+    implementation:
+      files_changed:
+        - file: "src/privacy/retention.py"
+          changes:
+            - change_type: "added"
+              description: "Implement configurable, batched deletion of expired message/event/dead-letter data and on-demand recipient erasure."
+        - file: "src/api/recipients.py"
+          changes:
+            - change_type: "modified"
+              description: "Add bearer-token-protected recipient erasure endpoint with 204/404 responses."
+        - file: "src/worker.py"
+          changes:
+            - change_type: "modified"
+              description: "Schedule daily message-retention cleanup."
+        - file: "Dockerfile"
+          changes:
+            - change_type: "modified"
+              description: "Run API, worker, and Beat as a non-root service user."
+        - file: "pyproject.toml"
+          changes:
+            - change_type: "modified"
+              description: "Add HTTPX runtime dependency and isolate opt-in performance tests."
+        - file: "tests/integration/test_operations.py"
+          changes:
+            - change_type: "modified"
+              description: "Test erasure authorization, complete linked-data removal, retention, and generated OpenAPI."
+        - file: "tests/integration/test_worker.py"
+          changes:
+            - change_type: "modified"
+              description: "Verify recipient addresses and provider keys are not leaked in retry logs."
+        - file: "tests/performance/test_queue_load.py"
+          changes:
+            - change_type: "added"
+              description: "Dispatch 5,000 queued messages in bounded batches and assert exactly-once enqueue marking."
+        - file: "README.md"
+          changes:
+            - change_type: "modified"
+              description: "Document provider setup, retention/erasure behavior, load-test invocation, and staging caveats."
+    verification:
+      build_passed: true
+      test_results:
+        command: "python -m pytest -q"
+        passed: 117
+        failed: 0
+        skipped: 0
+        failures: []
+      notes: "One performance test is deselected by default and passes separately. Templates coverage 86%, queue 81%, suppression 84%; the manual inbox/rendering checklist still requires real staging."
+    blocker: "Complete the authenticated staging deliverability and client-rendering checklist after T024 prerequisites are supplied."
+    upstream_trace:
+      plan_item: "7.2"
+      requirements: ["RNF-02", "RNF-04", "RNF-05", "RNF-06", "RNF-07", "RNF-08", "RN-01", "RN-02", "RN-03", "RN-04", "RN-05", "RN-06", "RN-07", "RN-08", "RN-09", "RN-10", "RN-11", "RN-12"]
+      full_trace: "RNF-02,RNF-04..RNF-08,RN-01..RN-12 → Phase-7.2 → T025 → src/privacy/retention.py,tests/,Dockerfile,README.md,OpenAPI"
 
 pending_tasks:
-  - {task_id: "T018", blocked_by: ["T008"], priority: "P1"}
-  - {task_id: "T019", blocked_by: ["T018"], priority: "P1"}
-  - {task_id: "T020", blocked_by: ["T005"], priority: "P1"}
-  - {task_id: "T021", blocked_by: ["T020"], priority: "P1"}
-  - {task_id: "T022", blocked_by: ["T006", "T012"], priority: "P2"}
-  - {task_id: "T023", blocked_by: ["T005"], priority: "P2"}
-  - {task_id: "T024", blocked_by: ["T008"], priority: "P2"}
-  - {task_id: "T025", blocked_by: ["T005", "T009", "T015", "T021"], priority: "P1"}
+  - task_id: "T024"
+    blocked_by: []
+    priority: "P2"
+    reason: "Authenticated provider staging requires Resend/Brevo credentials, an authenticated sender domain, and controlled test inboxes."
+  - task_id: "T025"
+    blocked_by: ["T024"]
+    priority: "P1"
+    reason: "Local quality/privacy gates pass; final deliverability and client-rendering checklist requires the authenticated staging environment."
 
 untracked_changes: []
 traceability_chain:
@@ -644,11 +1022,53 @@ traceability_chain:
     tasks: ["T016", "T017"]
     files: ["src/scheduler/campaign_controls.py", "src/api/campaigns.py", "src/queue/warmup.py"]
     status: "completed"
+  - chain_id: "TRACE-RF-09-RNF-04-RN-03-RN-10"
+    requirement: "RF-09/RNF-04/RN-03/RN-10"
+    plan_phase: "Phase-5"
+    plan_item: "5.1"
+    tasks: ["T018", "T019"]
+    files: ["src/providers/webhook.py", "src/api/webhooks.py", "src/suppression/events.py", "migrations/versions/0004_provider_webhooks.py"]
+    status: "completed"
+  - chain_id: "TRACE-RF-10-RF-11-RF-12-RF-13"
+    requirement: "RF-10/RF-11/RF-12/RF-13/RN-01..RN-05"
+    plan_phase: "Phase-5"
+    plan_item: "5.2"
+    tasks: ["T020", "T021"]
+    files: ["src/suppression/service.py", "src/api/unsubscribe.py", "src/providers/headers.py", "src/queue/tasks.py"]
+    status: "completed"
+  - chain_id: "TRACE-RF-15-RN-12"
+    requirement: "RF-15/RN-12"
+    plan_phase: "Phase-6"
+    plan_item: "6.1"
+    tasks: ["T022"]
+    files: ["src/rendering/pdf.py", "src/scheduler/reports.py", "src/providers/smtp.py", "src/worker.py"]
+    status: "completed"
+  - chain_id: "TRACE-RF-16-RF-18-RF-21-RF-22-RNF-06"
+    requirement: "RF-16/RF-18/RF-21/RF-22/RNF-06"
+    plan_phase: "Phase-6"
+    plan_item: "6.2"
+    tasks: ["T023"]
+    files: ["src/domain/checks.py", "src/api/domain.py", "src/api/metrics.py", "src/api/exports.py", "src/api/dependencies.py"]
+    status: "completed"
+  - chain_id: "TRACE-RF-16-RNF-01-RNF-03-RNF-09-RNF-10-RN-06-RN-09-RN-10"
+    requirement: "RF-16/RNF-01/RNF-03/RNF-09/RNF-10/RN-06/RN-09/RN-10"
+    plan_phase: "Phase-7"
+    plan_item: "7.1"
+    tasks: ["T024"]
+    files: ["src/providers/resend.py", "src/providers/brevo.py", "src/providers/factory.py", "docs/provider-evaluation.md"]
+    status: "partial"
+  - chain_id: "TRACE-RNF-02-RNF-04-RNF-05-RNF-06-RNF-07-RNF-08"
+    requirement: "RNF-02/RNF-04/RNF-05/RNF-06/RNF-07/RNF-08/RN-01..RN-12"
+    plan_phase: "Phase-7"
+    plan_item: "7.2"
+    tasks: ["T025"]
+    files: ["src/privacy/retention.py", "src/api/recipients.py", "tests/", "Dockerfile", "README.md"]
+    status: "partial"
 
 validation:
   passed: true
   errors: []
   warnings:
-    - "Docker Compose container startup and live Mailpit delivery remain unverified because the Docker Desktop Linux engine is unavailable; Compose configuration is valid and live API endpoints were probed with temporary SQLite."
-    - "Reputation counters and automatic pause policy are implemented, but actual bounce/complaint ingestion is a Phase 5 webhook dependency."
-  blocking_issues: []
+    - "The ReportLab dependency emits a third-party Python 3.14 deprecation warning during tests; all tests pass."
+  blocking_issues:
+    - "Authenticated Resend/Brevo staging and manual inbox/rendering verification require external credentials, an authenticated sender domain, and test inboxes."

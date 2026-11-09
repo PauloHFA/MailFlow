@@ -1,0 +1,122 @@
+batch_id: "B05"
+completed_tasks: ["T018", "T019", "T020", "T021"]
+blocked_tasks: []
+files_changed:
+  T018:
+    - file: "src/providers/webhook.py"
+      change_type: "created"
+      description: "Verify bounded timestamped HMAC webhook requests and validate canonical payloads."
+    - file: "src/api/webhooks.py"
+      change_type: "created"
+      description: "Expose signed canonical webhook endpoint."
+    - file: "src/config.py"
+      change_type: "modified"
+      description: "Add webhook secret and timestamp tolerance settings."
+  T019:
+    - file: "src/suppression/events.py"
+      change_type: "created"
+      description: "Persist normalized provider events idempotently and connect reputation policy."
+    - file: "src/db/models.py"
+      change_type: "modified"
+      description: "Add provider event identity, receipt time, and uniqueness constraint."
+    - file: "migrations/versions/0004_provider_webhooks.py"
+      change_type: "created"
+      description: "Migrate provider event identity fields."
+  T020:
+    - file: "src/suppression/service.py"
+      change_type: "created"
+      description: "Apply hard bounce, complaint, and consecutive soft bounce suppression."
+  T021:
+    - file: "src/suppression/unsubscribe.py"
+      change_type: "created"
+      description: "Issue and verify one-year signed consent-specific tokens."
+    - file: "src/api/unsubscribe.py"
+      change_type: "created"
+      description: "Add side-effect-free GET and idempotent RFC 8058 POST endpoints."
+    - file: "src/providers/headers.py"
+      change_type: "created"
+      description: "Generate safe one-click unsubscribe headers."
+    - file: "src/providers/base.py"
+      change_type: "modified"
+      description: "Allow validated provider-neutral additional email headers."
+    - file: "src/providers/smtp.py"
+      change_type: "modified"
+      description: "Attach validated headers to outgoing MIME messages."
+    - file: "src/queue/tasks.py"
+      change_type: "modified"
+      description: "Recheck active consent and add unsubscribe headers before promotional delivery."
+    - file: "src/api/campaigns.py"
+      change_type: "modified"
+      description: "Enable promotional campaigns only with current purpose-matched consent."
+    - file: "src/api/main.py"
+      change_type: "modified"
+      description: "Register webhook and unsubscribe routes."
+    - file: "README.md"
+      change_type: "modified"
+      description: "Document webhook signature contract and unsubscribe behavior."
+    - file: ".env.example"
+      change_type: "modified"
+      description: "Document new secrets and webhook configuration."
+upstream_artifacts_consumed:
+  T018:
+    - artifact: "plan.md"
+      used_for: "T018 acceptance criteria and RF-09/RNF-04 traceability."
+  T019:
+    - artifact: "plan.md"
+      used_for: "T019 idempotent event processing and provider event contract."
+  T020:
+    - artifact: "plan.md"
+      used_for: "T020 global suppression and soft-bounce threshold requirements."
+  T021:
+    - artifact: "plan.md"
+      used_for: "T021 GET/POST behavior, consent scope, and RFC 8058 requirements."
+evidence_mapping:
+  T018:
+    - upstream: "plan.md#T018"
+      output: "src/providers/webhook.py,src/api/webhooks.py"
+      evidence: "Invalid, expired, malformed, and valid signed request tests pass."
+  T019:
+    - upstream: "plan.md#T019"
+      output: "src/suppression/events.py,migrations/versions/0004_provider_webhooks.py"
+      evidence: "Duplicate provider event IDs are accepted once; Alembic migration checks pass."
+  T020:
+    - upstream: "plan.md#T020"
+      output: "src/suppression/service.py"
+      evidence: "Hard bounce, complaint, three soft bounces, and delivery reset tests pass."
+  T021:
+    - upstream: "plan.md#T021"
+      output: "src/api/unsubscribe.py,src/providers/headers.py,src/queue/tasks.py"
+      evidence: "GET is side-effect-free, POST revokes only its consent, and worker checks consent before send."
+traceability:
+  - requirement: "RF-09/RNF-04/RN-03/RN-10"
+    plan_item: "5.1"
+    task: "T018"
+    files: ["src/providers/webhook.py", "src/api/webhooks.py"]
+    status: "completed"
+  - requirement: "RF-09/RNF-04/RN-03/RN-10"
+    plan_item: "5.1"
+    task: "T019"
+    files: ["src/suppression/events.py", "src/db/models.py", "migrations/versions/0004_provider_webhooks.py"]
+    status: "completed"
+  - requirement: "RF-10/RF-11/RF-12"
+    plan_item: "5.2"
+    task: "T020"
+    files: ["src/suppression/service.py", "src/api/webhooks.py"]
+    status: "completed"
+  - requirement: "RF-10/RF-11/RF-12/RF-13/RN-01..RN-05"
+    plan_item: "5.2"
+    task: "T021"
+    files: ["src/suppression/unsubscribe.py", "src/api/unsubscribe.py", "src/providers/headers.py", "src/queue/tasks.py"]
+    status: "completed"
+protocol_violation: false
+errors: []
+warnings:
+  - "No production webhook provider was selected; Resend/Brevo signature adapters remain in Phase 7."
+  - "Docker containers and live Mailpit delivery were not exercised; Compose configuration, live Uvicorn route probes, and SQLite-backed tests passed."
+test_results:
+  batch:
+    command: "python -m pytest -q"
+    passed: 71
+    failed: 0
+    skipped: 0
+    failures: []

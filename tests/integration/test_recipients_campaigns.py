@@ -44,6 +44,7 @@ def api_database() -> Iterator[tuple[TestClient, sessionmaker[Session], list[str
             _env_file=None,
             app_env="test",
             test_recipient_allowlist="qa@example.com,grace@example.com",
+            unsubscribe_signing_secret="test-unsubscribe-signing-secret-that-is-long-enough",
         )
 
     app.dependency_overrides[get_db] = override_db
@@ -297,7 +298,7 @@ def test_relative_reminder_occurrence_creates_idempotent_messages(
     assert schedule.processed_at is not None
 
 
-def test_promotional_campaign_is_disabled_until_unsubscribe_support(
+def test_promotional_campaign_requires_and_accepts_current_consent(
     api_database: tuple[TestClient, sessionmaker[Session], list[str]],
 ) -> None:
     client, factory, _ = api_database
@@ -326,7 +327,36 @@ def test_promotional_campaign_is_disabled_until_unsubscribe_support(
     )
 
     assert response.status_code == 422
-    assert "one-click unsubscribe" in response.json()["detail"]
+    assert "without current consent" in response.json()["detail"]
+
+    with factory() as session:
+        session.add(
+            Consent(
+                recipient_id=recipient_id,
+                purpose="monthly-updates",
+                legal_basis="consent",
+                source="signup-form",
+            )
+        )
+        session.commit()
+
+    response = client.post(
+        "/api/v1/campaigns",
+        json={
+            "name": "newsletter",
+            "template_id": template_id,
+            "message_type": "promotional",
+            "purpose": "monthly-updates",
+            "recipient_ids": [recipient_id],
+            "variables": {"name": "Ada"},
+            "schedule": {
+                "kind": "once",
+                "send_at": "2026-11-10T12:00:00Z",
+                "timezone": "UTC",
+            },
+        },
+    )
+    assert response.status_code == 201
 
 
 def test_revoked_consent_before_scheduled_campaign_prevents_dispatch(

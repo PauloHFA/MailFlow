@@ -6,13 +6,24 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
+from urllib.parse import parse_qs, urlsplit
 
 from src.config import Settings
 from src.db import models  # noqa: F401
 from src.db.base import Base
-from src.db.models import DeadLetter, EmailTemplate, Message, MessageEvent, MessageStatus, Recipient
+from src.db.models import (
+    Campaign,
+    Consent,
+    DeadLetter,
+    EmailTemplate,
+    Message,
+    MessageEvent,
+    MessageStatus,
+    Recipient,
+)
 from src.providers.base import EmailPayload, EmailSendResult
 from src import worker
+from src.suppression.unsubscribe import verify_unsubscribe_token
 
 
 class FakeRedis:
@@ -62,7 +73,8 @@ def worker_session_factory() -> Iterator[sessionmaker[Session]]:
 
 
 def test_worker_sends_a_queued_message_once(
-    worker_session_factory: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch
+    worker_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     settings = Settings(
         _env_file=None,
@@ -124,6 +136,157 @@ def test_worker_sends_a_queued_message_once(
     assert len(events) == 1
 
 
+def test_worker_rechecks_promotional_consent_and_adds_one_click_headers(
+    worker_session_factory: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    secret = "test-unsubscribe-signing-secret-that-is-long-enough"
+    settings = Settings(
+        _env_file=None,
+        app_env="test",
+        test_recipient_allowlist="qa@example.com",
+        unsubscribe_signing_secret=secret,
+        unsubscribe_base_url="https://mailflow.example/api/v1/unsubscribe",
+    )
+    with worker_session_factory() as session:
+        recipient = Recipient(email="qa@example.com")
+        template = EmailTemplate(
+            name="newsletter",
+            version=1,
+            subject="Monthly news",
+            html_body="<p>Monthly news</p>",
+            text_body="Monthly news",
+            required_variables=[],
+            message_type="promotional",
+        )
+        session.add_all([recipient, template])
+        session.flush()
+        consent = Consent(
+            recipient_id=recipient.id,
+            purpose="monthly-updates",
+            legal_basis="consent",
+            source="signup",
+        )
+        campaign = Campaign(
+            name="newsletter",
+            template_id=template.id,
+            message_type="promotional",
+            purpose="monthly-updates",
+            status="active",
+            variables={},
+        )
+        session.add_all([consent, campaign])
+        session.flush()
+        message = Message(
+            recipient_id=recipient.id,
+            template_id=template.id,
+            campaign_id=campaign.id,
+            idempotency_key="worker-promotional",
+            request_hash="e" * 64,
+            status=MessageStatus.QUEUED.value,
+            message_type="promotional",
+            variables={},
+        )
+        session.add(message)
+        session.commit()
+        message_id = message.id
+        consent_id = consent.id
+
+    sent_payloads: list[EmailPayload] = []
+
+    class FakeProvider:
+        def send(self, payload: EmailPayload) -> EmailSendResult:
+            sent_payloads.append(payload)
+            return EmailSendResult(provider="test-provider", provider_message_id="provider-456")
+
+    monkeypatch.setattr(worker, "get_settings", lambda: settings)
+    monkeypatch.setattr(worker, "get_session_factory", lambda database_url: worker_session_factory)
+    monkeypatch.setattr(worker, "MailpitSMTPProvider", lambda configured_settings: FakeProvider())
+    monkeypatch.setattr(worker, "redis_client", lambda redis_url: FakeRedis())
+
+    worker.process_message.run(message_id)
+
+    assert len(sent_payloads) == 1
+    headers = sent_payloads[0].headers
+    assert headers["List-Unsubscribe-Post"] == "List-Unsubscribe=One-Click"
+    url = headers["List-Unsubscribe"].removeprefix("<").removesuffix(">")
+    token = parse_qs(urlsplit(url).query)["token"][0]
+    assert verify_unsubscribe_token(token, secret) == consent_id
+
+
+def test_worker_blocks_promotional_message_after_consent_revocation(
+    worker_session_factory: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        app_env="test",
+        test_recipient_allowlist="qa@example.com",
+        unsubscribe_signing_secret="test-unsubscribe-signing-secret-that-is-long-enough",
+    )
+    with worker_session_factory() as session:
+        recipient = Recipient(email="qa@example.com")
+        template = EmailTemplate(
+            name="newsletter",
+            version=1,
+            subject="Monthly news",
+            html_body="<p>Monthly news</p>",
+            text_body="Monthly news",
+            required_variables=[],
+            message_type="promotional",
+        )
+        session.add_all([recipient, template])
+        session.flush()
+        consent = Consent(
+            recipient_id=recipient.id,
+            purpose="monthly-updates",
+            legal_basis="consent",
+            source="signup",
+            revoked_at=datetime.now(timezone.utc),
+        )
+        campaign = Campaign(
+            name="newsletter",
+            template_id=template.id,
+            message_type="promotional",
+            purpose="monthly-updates",
+            status="active",
+            variables={},
+        )
+        session.add_all([consent, campaign])
+        session.flush()
+        message = Message(
+            recipient_id=recipient.id,
+            template_id=template.id,
+            campaign_id=campaign.id,
+            idempotency_key="worker-promotional-revoked",
+            request_hash="f" * 64,
+            status=MessageStatus.QUEUED.value,
+            message_type="promotional",
+            variables={},
+        )
+        session.add(message)
+        session.commit()
+        message_id = message.id
+
+    class UnexpectedProvider:
+        def __init__(self, _settings: Settings) -> None:
+            pass
+
+        def send(self, _payload: EmailPayload) -> EmailSendResult:
+            pytest.fail("Promotional send must be blocked after consent revocation.")
+
+    monkeypatch.setattr(worker, "get_settings", lambda: settings)
+    monkeypatch.setattr(worker, "get_session_factory", lambda database_url: worker_session_factory)
+    monkeypatch.setattr(worker, "MailpitSMTPProvider", UnexpectedProvider)
+    monkeypatch.setattr(worker, "redis_client", lambda redis_url: FakeRedis())
+
+    worker.process_message.run(message_id)
+
+    with worker_session_factory() as session:
+        persisted = session.get(Message, message_id)
+    assert persisted is not None
+    assert persisted.status == MessageStatus.FAILED.value
+    assert persisted.error == "Promotional consent is not active."
+
+
 def test_worker_marks_suppressed_recipient_without_sending(
     worker_session_factory: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -181,7 +344,9 @@ def test_worker_marks_suppressed_recipient_without_sending(
 
 
 def test_worker_persists_retry_after_temporary_provider_failure(
-    worker_session_factory: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch
+    worker_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     settings = Settings(
         _env_file=None,
@@ -221,7 +386,9 @@ def test_worker_persists_retry_after_temporary_provider_failure(
             pass
 
         def send(self, _payload: EmailPayload) -> EmailSendResult:
-            raise smtplib.SMTPServerDisconnected("temporary outage")
+            raise smtplib.SMTPServerDisconnected(
+                "temporary outage for qa@example.com using test-provider-key"
+            )
 
     monkeypatch.setattr(worker, "get_settings", lambda: settings)
     monkeypatch.setattr(worker, "get_session_factory", lambda database_url: worker_session_factory)
@@ -239,6 +406,8 @@ def test_worker_persists_retry_after_temporary_provider_failure(
     assert persisted.attempts == 1
     assert persisted.next_attempt_at is not None
     assert persisted.error.startswith("Temporary provider failure")
+    assert "qa@example.com" not in caplog.text
+    assert "test-provider-key" not in caplog.text
     assert [event.event_type for event in events] == ["retry_scheduled"]
 
 

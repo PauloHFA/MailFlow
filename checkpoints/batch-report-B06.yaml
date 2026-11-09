@@ -1,0 +1,131 @@
+batch_id: "B06"
+completed_tasks: ["T022", "T023"]
+blocked_tasks: []
+files_changed:
+  T022:
+    - file: "src/rendering/pdf.py"
+      change_type: "created"
+      description: "Generate aggregate delivery reports and validate PDF signature, content, and 5 MB limit."
+    - file: "src/scheduler/reports.py"
+      change_type: "created"
+      description: "Build the previous-24-hour delivery report and send it through EmailProvider."
+    - file: "src/providers/base.py"
+      change_type: "modified"
+      description: "Add typed attachment support to the provider contract."
+    - file: "src/providers/smtp.py"
+      change_type: "modified"
+      description: "Attach validated PDF documents with a 5 MB aggregate limit."
+    - file: "src/worker.py"
+      change_type: "modified"
+      description: "Register the daily report task and midnight UTC Celery Beat schedule."
+    - file: "docker-compose.yml"
+      change_type: "modified"
+      description: "Pass optional report settings to the worker and scheduler."
+    - file: "tests/unit/test_pdf_reports.py"
+      change_type: "created"
+      description: "Test PDF generation, signatures, and invalid/oversized attachment rejection."
+  T023:
+    - file: "src/domain/checks.py"
+      change_type: "created"
+      description: "Check SPF, selector-specific DKIM, and DMARC DNS records."
+    - file: "src/api/domain.py"
+      change_type: "created"
+      description: "Expose authenticated domain verification."
+    - file: "src/api/metrics.py"
+      change_type: "created"
+      description: "Expose aggregate delivery counts."
+    - file: "src/api/exports.py"
+      change_type: "created"
+      description: "Export bounded message and consent CSV data with spreadsheet formula neutralization."
+    - file: "src/api/dependencies.py"
+      change_type: "modified"
+      description: "Protect operational and personal-data APIs with a fail-closed bearer token."
+    - file: "src/api/main.py"
+      change_type: "modified"
+      description: "Register operations API routes."
+    - file: "pyproject.toml"
+      change_type: "modified"
+      description: "Declare dnspython and ReportLab runtime dependencies."
+    - file: "tests/unit/test_domain_checks.py"
+      change_type: "created"
+      description: "Test DNS verification using a deterministic resolver."
+    - file: "tests/integration/test_operations.py"
+      change_type: "created"
+      description: "Test report delivery and protected domain, metrics, and CSV endpoints."
+    - file: "README.md"
+      change_type: "modified"
+      description: "Document reports, operational API authorization, DNS checks, metrics, and exports."
+    - file: ".env.example"
+      change_type: "modified"
+      description: "Document the operations token and optional report settings."
+upstream_artifacts_consumed:
+  T022:
+    - artifact: "plan.md"
+      used_for: "T022 acceptance criteria, RF-15, RN-12, and CA-14."
+  T023:
+    - artifact: "plan.md"
+      used_for: "T023 acceptance criteria and RF-16/RF-18/RF-21/RF-22/RNF-06 traceability."
+evidence_mapping:
+  T022:
+    - upstream: "plan.md#T022"
+      output: "src/rendering/pdf.py,src/scheduler/reports.py,src/providers/smtp.py"
+      evidence: "PDF report and attachment tests pass; daily scheduling uses UTC and reports contain aggregate counts only."
+  T023:
+    - upstream: "plan.md#T023"
+      output: "src/domain/checks.py,src/api/domain.py,src/api/metrics.py,src/api/exports.py"
+      evidence: "DNS and operations API tests pass; runtime probes returned HTTP 200 for domain, metrics, and both export routes."
+traceability:
+  - requirement: "RF-15/RN-12"
+    plan_item: "6.1"
+    task: "T022"
+    files: ["src/rendering/pdf.py", "src/scheduler/reports.py", "src/providers/smtp.py", "src/worker.py"]
+    status: "completed"
+  - requirement: "RF-16/RF-18/RF-21/RF-22/RNF-06"
+    plan_item: "6.2"
+    task: "T023"
+    files: ["src/domain/checks.py", "src/api/domain.py", "src/api/metrics.py", "src/api/exports.py", "src/api/dependencies.py"]
+    status: "completed"
+endpoint_probes:
+  - method: "GET"
+    path: "/health"
+    status: 200
+    result: "PASS"
+  - method: "GET"
+    path: "/api/v1/domain/check"
+    status: 200
+    result: "PASS"
+  - method: "GET"
+    path: "/api/v1/metrics/delivery"
+    status: 200
+    result: "PASS"
+  - method: "GET"
+    path: "/api/v1/exports/messages.csv"
+    status: 200
+    result: "PASS"
+  - method: "GET"
+    path: "/api/v1/exports/consents.csv"
+    status: 200
+    result: "PASS"
+protocol_violation: false
+errors: []
+warnings:
+  - "ReportLab emits a third-party ast.NameConstant deprecation warning; the project test suite passes."
+validation:
+  passed: true
+  checks:
+    - command: "python -m pytest -q"
+      result: "95 passed, 0 failed"
+    - command: "python -m compileall -q src tests"
+      result: "passed"
+    - command: "python -m pip check"
+      result: "passed"
+    - command: "docker compose --env-file .env.example config --quiet"
+      result: "passed"
+    - command: "docker compose --env-file .env.example up -d --build"
+      result: "passed; API, worker, Beat, PostgreSQL, Redis, and Mailpit started; API/PostgreSQL/Redis/Mailpit healthy"
+    - command: "curl.exe http://127.0.0.1:8000/health; authenticated operations API probes"
+      result: "passed; health, DNS check, delivery metrics, and both CSV exports returned HTTP 200"
+    - command: "Python smtplib send to 127.0.0.1:1025; Mailpit API verify"
+      result: "passed; Mailpit accepted and stored one synthetic local message"
+    - command: "git diff --check"
+      result: "passed"

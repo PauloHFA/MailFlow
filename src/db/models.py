@@ -152,13 +152,23 @@ class MessageEvent(Base):
         String(36), ForeignKey("messages.id", ondelete="CASCADE"), nullable=False
     )
     event_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    provider: Mapped[str | None] = mapped_column(String(40))
+    provider_event_id: Mapped[str | None] = mapped_column(String(255))
     payload: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
     occurred_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
     __table_args__ = (
         Index("ix_events_message_occurred", "message_id", "occurred_at"),
+        UniqueConstraint(
+            "provider",
+            "provider_event_id",
+            name="uq_events_provider_event_id",
+        ),
     )
 
 

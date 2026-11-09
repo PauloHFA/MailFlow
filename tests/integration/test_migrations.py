@@ -28,6 +28,8 @@ def test_initial_migration_creates_and_downgrades_mailflow_schema(
         "schedules",
         "dead_letters",
     } <= table_names
+    columns = {column["name"] for column in inspect(engine).get_columns("events")}
+    assert {"provider", "provider_event_id", "received_at"} <= columns
     engine.dispose()
 
     command.downgrade(config, "base")

@@ -6,8 +6,13 @@ from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_
 
 from src.api.messages import router as messages_router
 from src.api.campaigns import router as campaigns_router
+from src.api.domain import router as domain_router
+from src.api.exports import router as exports_router
+from src.api.metrics import router as delivery_metrics_router
 from src.api.recipients import router as recipients_router
 from src.api.templates import router as templates_router
+from src.api.unsubscribe import router as unsubscribe_router
+from src.api.webhooks import router as webhooks_router
 from src.config import get_settings
 from src.logging_config import configure_logging
 
@@ -30,6 +35,11 @@ app.include_router(messages_router)
 app.include_router(recipients_router)
 app.include_router(campaigns_router)
 app.include_router(templates_router)
+app.include_router(webhooks_router)
+app.include_router(unsubscribe_router)
+app.include_router(domain_router)
+app.include_router(delivery_metrics_router)
+app.include_router(exports_router)
 
 
 @app.middleware("http")

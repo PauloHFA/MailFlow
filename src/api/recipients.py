@@ -1,13 +1,14 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from src.api.dependencies import get_db
+from src.api.dependencies import get_db, require_operations_access
 from src.consent.import_csv import CSVImportError, parse_recipients_csv
 from src.db.models import Consent, Recipient, RecipientStatus
+from src.privacy.retention import erase_recipient_data
 
 router = APIRouter(prefix="/api/v1/recipients", tags=["recipients"])
 MAX_CSV_BYTES = 5 * 1024 * 1024
@@ -147,3 +148,18 @@ def revoke_consent(
         "purpose": consent.purpose,
         "revoked_at": consent.revoked_at,
     }
+
+
+@router.delete(
+    "/{recipient_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_operations_access)],
+)
+def erase_recipient(
+    recipient_id: str,
+    session: Session = Depends(get_db),
+) -> Response:
+    if not erase_recipient_data(session, recipient_id):
+        raise HTTPException(status_code=404, detail="Recipient not found.")
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

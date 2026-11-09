@@ -126,6 +126,7 @@ def recover_stale_messages(
     now: datetime,
     visibility_timeout_seconds: int,
     max_attempts: int,
+    provider_supports_idempotency: bool = False,
     batch_size: int = 500,
 ) -> tuple[int, int]:
     if now.tzinfo is None or now.utcoffset() is None:
@@ -133,6 +134,7 @@ def recover_stale_messages(
     if visibility_timeout_seconds < 1 or max_attempts < 1 or batch_size < 1:
         raise ValueError("timeouts, attempts, and batch_size must be positive.")
     current_time = now.astimezone(timezone.utc)
+    idempotency_window = timedelta(hours=24)
     stale_before = current_time - timedelta(seconds=visibility_timeout_seconds)
     recovered = 0
     dead_lettered = 0
@@ -148,6 +150,40 @@ def recover_stale_messages(
             .limit(batch_size)
         ).all()
         for message in messages:
+            processing_started_at = message.processing_started_at
+            if processing_started_at is not None and processing_started_at.tzinfo is None:
+                processing_started_at = processing_started_at.replace(tzinfo=timezone.utc)
+            idempotency_expired = (
+                provider_supports_idempotency
+                and processing_started_at is not None
+                and current_time - processing_started_at.astimezone(timezone.utc)
+                > idempotency_window
+            )
+            if not provider_supports_idempotency or idempotency_expired:
+                message.status = MessageStatus.UNKNOWN.value
+                message.error = "Worker stopped during a provider request; outcome is unknown."
+                message.processing_started_at = None
+                message.next_attempt_at = None
+                message.enqueued_at = None
+                session.add(
+                    MessageEvent(
+                        message_id=message.id,
+                        event_type="delivery_unknown",
+                        payload={"reason": "worker_visibility_timeout"},
+                    )
+                )
+                session.add(
+                    MessageEvent(
+                        message_id=message.id,
+                        event_type="provider_failure",
+                        payload={"reason": "worker_visibility_timeout"},
+                    )
+                )
+                logger.critical(
+                    "message_delivery_outcome_unknown",
+                    extra={"message_id": message.id, "reason": "worker_visibility_timeout"},
+                )
+                continue
             if message.attempts >= max_attempts:
                 _dead_letter(session, message, "Worker visibility timeout exhausted attempts.")
                 dead_lettered += 1

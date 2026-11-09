@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     reputation_complaint_threshold: float = Field(default=0.001, gt=0, le=1)
     webhook_signing_secret: str = ""
     webhook_timestamp_tolerance_seconds: int = Field(default=300, ge=1)
+    resend_webhook_secret: SecretStr = SecretStr("")
+    brevo_webhook_token: SecretStr = SecretStr("")
+    suppression_hash_secret: SecretStr = SecretStr("")
     unsubscribe_signing_secret: str = ""
     unsubscribe_base_url: str = "http://localhost:8000/api/v1/unsubscribe"
     operations_api_token: str = ""

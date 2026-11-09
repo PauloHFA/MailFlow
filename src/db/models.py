@@ -35,6 +35,7 @@ class MessageStatus(StrEnum):
     RETRY = "retry"
     FAILED = "failed"
     CANCELLED = "cancelled"
+    UNKNOWN = "unknown"
 
 
 class CampaignStatus(StrEnum):
@@ -130,7 +131,7 @@ class Message(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "status IN ('queued', 'processing', 'sent', 'retry', 'failed', 'cancelled')",
+            "status IN ('queued', 'processing', 'sent', 'retry', 'failed', 'cancelled', 'unknown')",
             name="ck_messages_status",
         ),
         CheckConstraint(

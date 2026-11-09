@@ -97,6 +97,7 @@ def dispatch_pending_and_recover_messages() -> int:
         now=now,
         visibility_timeout_seconds=current_settings.processing_visibility_timeout_seconds,
         max_attempts=current_settings.worker_max_attempts,
+        provider_supports_idempotency=current_settings.email_provider == "resend",
     )
     return dispatch_pending_message_rows(
         session_factory,

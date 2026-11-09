@@ -130,6 +130,7 @@ def test_worker_sends_a_queued_message_once(
     assert len(sent_payloads) == 1
     assert sent_payloads[0].recipient == "qa@example.com"
     assert sent_payloads[0].subject == "Receipt for Ada"
+    assert sent_payloads[0].idempotency_key == message_id
     assert persisted is not None
     assert persisted.status == MessageStatus.SENT.value
     assert persisted.provider_message_id == "provider-123"
@@ -408,7 +409,78 @@ def test_worker_persists_retry_after_temporary_provider_failure(
     assert persisted.error.startswith("Temporary provider failure")
     assert "qa@example.com" not in caplog.text
     assert "test-provider-key" not in caplog.text
-    assert [event.event_type for event in events] == ["retry_scheduled"]
+    assert {event.event_type for event in events} == {
+        "provider_failure",
+        "retry_scheduled",
+    }
+
+
+def test_worker_stops_retrying_after_ambiguous_provider_outcome(
+    worker_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from src.providers.base import ProviderAmbiguousError
+
+    settings = Settings(
+        _env_file=None,
+        app_env="test",
+        test_recipient_allowlist="qa@example.com",
+    )
+    with worker_session_factory() as session:
+        recipient = Recipient(email="qa@example.com")
+        template = EmailTemplate(
+            name="ambiguous",
+            version=1,
+            subject="Hello",
+            html_body="<p>Hello</p>",
+            text_body="Hello",
+            required_variables=[],
+        )
+        session.add_all([recipient, template])
+        session.flush()
+        message = Message(
+            recipient_id=recipient.id,
+            template_id=template.id,
+            idempotency_key="worker-ambiguous",
+            request_hash="c" * 64,
+            status=MessageStatus.QUEUED.value,
+            message_type="transactional",
+            variables={},
+        )
+        session.add(message)
+        session.commit()
+        message_id = message.id
+
+    class AmbiguousProvider:
+        def send(self, payload: EmailPayload) -> EmailSendResult:
+            raise ProviderAmbiguousError("Provider outcome is unknown.")
+
+    monkeypatch.setattr(worker, "get_settings", lambda: settings)
+    monkeypatch.setattr(
+        worker,
+        "get_session_factory",
+        lambda database_url: worker_session_factory,
+    )
+    monkeypatch.setattr(
+        worker,
+        "MailpitSMTPProvider",
+        lambda configured_settings: AmbiguousProvider(),
+    )
+    redis = FakeRedis()
+    monkeypatch.setattr(worker, "redis_client", lambda redis_url: redis)
+
+    worker.process_message.run(message_id)
+
+    with worker_session_factory() as session:
+        persisted = session.get(Message, message_id)
+        events = session.query(MessageEvent).filter_by(message_id=message_id).all()
+
+    assert persisted is not None
+    assert persisted.status == MessageStatus.UNKNOWN.value
+    assert {event.event_type for event in events} == {
+        "delivery_unknown",
+        "provider_failure",
+    }
 
 
 def test_worker_dead_letters_permanent_provider_failure(

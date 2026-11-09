@@ -45,8 +45,11 @@ class BrevoEmailProvider(HttpEmailProvider):
             "htmlContent": payload.html_body,
             "textContent": payload.text_body,
         }
-        if payload.headers:
-            body["headers"] = payload.headers
+        headers = dict(payload.headers)
+        if payload.idempotency_key is not None:
+            headers["X-Mailin-custom"] = payload.idempotency_key
+        if headers:
+            body["headers"] = headers
         if payload.attachments:
             body["attachment"] = [
                 {"name": item["filename"], "content": item["content"]}

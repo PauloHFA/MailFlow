@@ -93,7 +93,7 @@ def test_due_retry_is_published_once_and_reset_to_queued(
     assert message.enqueued_at is not None
 
 
-def test_stale_worker_claim_is_recovered_or_dead_lettered(
+def test_stale_worker_claim_without_idempotency_is_marked_unknown(
     queue_factory: sessionmaker[Session],
 ) -> None:
     message_id = make_queued_message(queue_factory, status=MessageStatus.QUEUED.value)
@@ -113,7 +113,7 @@ def test_stale_worker_claim_is_recovered_or_dead_lettered(
         max_attempts=5,
     )
 
-    assert (recovered, dead_lettered) == (0, 1)
+    assert (recovered, dead_lettered) == (0, 0)
     with queue_factory() as session:
         message = session.get(Message, message_id)
         letter = session.scalar(select(DeadLetter).where(DeadLetter.message_id == message_id))
@@ -121,10 +121,65 @@ def test_stale_worker_claim_is_recovered_or_dead_lettered(
             select(MessageEvent).where(MessageEvent.message_id == message_id)
         ).all()
     assert message is not None
-    assert message.status == MessageStatus.FAILED.value
-    assert letter is not None
-    assert letter.attempts == 5
-    assert any(event.event_type == "dead_lettered" for event in events)
+    assert message.status == MessageStatus.UNKNOWN.value
+    assert letter is None
+    assert any(event.event_type == "delivery_unknown" for event in events)
+
+
+def test_stale_worker_claim_with_idempotency_is_safe_to_recover(
+    queue_factory: sessionmaker[Session],
+) -> None:
+    message_id = make_queued_message(queue_factory, status=MessageStatus.QUEUED.value)
+    now = datetime(2026, 11, 8, 12, 0, tzinfo=timezone.utc)
+    with queue_factory() as session:
+        message = session.get(Message, message_id)
+        assert message is not None
+        message.status = MessageStatus.PROCESSING.value
+        message.attempts = 1
+        message.processing_started_at = now - timedelta(minutes=10)
+        session.commit()
+
+    recovered, dead_lettered = recover_stale_messages(
+        queue_factory,
+        now=now,
+        visibility_timeout_seconds=300,
+        max_attempts=5,
+        provider_supports_idempotency=True,
+    )
+
+    assert (recovered, dead_lettered) == (1, 0)
+    with queue_factory() as session:
+        message = session.get(Message, message_id)
+    assert message is not None
+    assert message.status == MessageStatus.RETRY.value
+
+
+def test_stale_worker_claim_past_provider_idempotency_window_is_unknown(
+    queue_factory: sessionmaker[Session],
+) -> None:
+    message_id = make_queued_message(queue_factory, status=MessageStatus.QUEUED.value)
+    now = datetime(2026, 11, 9, 12, 0, tzinfo=timezone.utc)
+    with queue_factory() as session:
+        message = session.get(Message, message_id)
+        assert message is not None
+        message.status = MessageStatus.PROCESSING.value
+        message.attempts = 1
+        message.processing_started_at = now - timedelta(hours=25)
+        session.commit()
+
+    recovered, dead_lettered = recover_stale_messages(
+        queue_factory,
+        now=now,
+        visibility_timeout_seconds=300,
+        max_attempts=5,
+        provider_supports_idempotency=True,
+    )
+
+    assert (recovered, dead_lettered) == (0, 0)
+    with queue_factory() as session:
+        message = session.get(Message, message_id)
+    assert message is not None
+    assert message.status == MessageStatus.UNKNOWN.value
 
 
 def test_reputation_threshold_pauses_only_promotional_campaigns(

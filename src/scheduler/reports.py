@@ -88,6 +88,7 @@ def send_daily_delivery_report(
             subject=f"MailFlow delivery report - {end_at:%Y-%m-%d}",
             html_body="<p>Your scheduled MailFlow delivery report is attached.</p>",
             text_body="Your scheduled MailFlow delivery report is attached.",
+            idempotency_key=f"mailflow-report-{end_at:%Y%m%d}",
             attachments=(
                 EmailAttachment(
                     filename=f"mailflow-delivery-{end_at:%Y%m%d}.pdf",

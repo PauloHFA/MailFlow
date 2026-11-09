@@ -12,7 +12,13 @@ from src.db.models import (
 )
 from src.queue.warmup import ReputationSnapshot
 
-_BOUNCE_STREAK_EVENTS = ("delivered", "soft_bounce", "hard_bounce", "complaint")
+_BOUNCE_STREAK_EVENTS = (
+    "delivered",
+    "soft_bounce",
+    "hard_bounce",
+    "complaint",
+    "unsubscribed",
+)
 
 
 def _suppress_recipient(
@@ -46,7 +52,7 @@ def apply_delivery_event(
     provider: str,
     occurred_at: datetime,
 ) -> bool:
-    if event_type in {"hard_bounce", "complaint"}:
+    if event_type in {"hard_bounce", "complaint", "unsubscribed"}:
         _suppress_recipient(
             session,
             recipient,

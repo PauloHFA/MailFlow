@@ -23,6 +23,7 @@ class ImportedRecipient:
     legal_basis: str | None = None
     consent_source: str | None = None
     consented_at: datetime | None = None
+    row_number: int = 0
 
 
 @dataclass(frozen=True)
@@ -124,6 +125,7 @@ def parse_recipients_csv(content: bytes, existing_emails: set[str]) -> ImportRes
                 legal_basis=row.get("legal_basis") or None,
                 consent_source=row.get("consent_source") or None,
                 consented_at=consented_at,
+                row_number=row_number,
             )
         )
         seen.add(email)

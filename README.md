@@ -90,18 +90,51 @@ an active consent matching the requested purpose. The worker rechecks consent be
 delivery and includes RFC 8058 `List-Unsubscribe` and `List-Unsubscribe-Post` headers.
 
 Configure separate random secrets of at least 32 bytes with
-`WEBHOOK_SIGNING_SECRET` and `UNSUBSCRIBE_SIGNING_SECRET`. Set
-`UNSUBSCRIBE_BASE_URL` to the public endpoint URL; production requires HTTPS. The
-canonical webhook endpoint is `POST /api/v1/webhooks/generic`. Send a JSON event with
-`event_id`, `event_type`, `message_id`, and timezone-aware `occurred_at`; supported
-event types are `delivered`, `hard_bounce`, `soft_bounce`, `complaint`, `opened`, and
-`clicked`. Sign the exact request bytes with HMAC-SHA256 over
+`WEBHOOK_SIGNING_SECRET`, `UNSUBSCRIBE_SIGNING_SECRET`, `SUPPRESSION_HASH_SECRET`,
+and `OPERATIONS_API_TOKEN`. Set `UNSUBSCRIBE_BASE_URL` to the public endpoint URL;
+production requires HTTPS. The canonical webhook endpoint is
+`POST /api/v1/webhooks/generic`. Send a JSON event with `event_id`, `event_type`,
+`message_id`, and timezone-aware `occurred_at`; supported event types are `delivered`,
+`hard_bounce`, `soft_bounce`, `complaint`, `unsubscribed`, `opened`, and `clicked`.
+Sign the exact request bytes with HMAC-SHA256 over
 `<unix-timestamp>.<raw-body>`, passing the timestamp in `X-MailFlow-Timestamp` and
-the lowercase hex digest prefixed by `sha256=` in `X-MailFlow-Signature`. Timestamps
-older than `WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS` or more than 30 seconds in the future
-are rejected. This is MailFlow's
-canonical adapter contract; production providers such as Resend or Brevo need their
-own verified signature adapters before being connected.
+the lowercase hex digest prefixed by `sha256=` in `X-MailFlow-Signature`.
+
+Provider-native endpoints are also available:
+
+- `POST /api/v1/webhooks/resend` verifies Resend's Svix signature over the exact raw
+  request body using `RESEND_WEBHOOK_SECRET`.
+- `POST /api/v1/webhooks/brevo` requires a random `BREVO_WEBHOOK_TOKEN` of at least
+  32 bytes in `X-MailFlow-Brevo-Token`; configure the same custom header on the Brevo
+  webhook. Brevo documents configurable authentication headers, not a native body
+  signature, so MailFlow does not describe this as an HMAC signature.
+
+Resend sends use the stable MailFlow message ID as `Idempotency-Key`. Resend documents
+a maximum key length of 256 characters and a 24-hour retention window. Brevo has no
+documented request-level idempotency contract for transactional email; MailFlow sends
+the internal message ID in `X-Mailin-custom` only for webhook correlation. If a
+non-idempotent provider's response is ambiguous or its worker stops during processing,
+the message is marked `unknown` and is not retried automatically. Reconcile it against
+the provider dashboard before taking manual action.
+
+The `GET /health` endpoint is liveness-only. `GET /ready` checks PostgreSQL and Redis
+and is used by the Compose API healthcheck. The authenticated
+`GET /api/v1/metrics/operations` endpoint reports oldest pending-message age, retrying
+and processing counts, dead letters, unknown delivery outcomes, and recent provider
+failures. Compose starts Prometheus at <http://localhost:9090>, scrapes the API, and
+loads the rules in `monitoring/alerts.yml`. They alert on API scrape failures,
+PostgreSQL/Redis readiness, queue age, provider failures, dead letters, and unknown
+delivery outcomes. Prometheus exposes firing rules in its Alerts page; configure an
+Alertmanager receiver in the deployment to route notifications to the operator's
+chosen channel.
+
+Suggested initial thresholds (tune for the deployment):
+
+- `mailflow_oldest_pending_age_seconds > 300`
+- `mailflow_provider_failures_last_hour > 0`
+- `mailflow_dead_letters > 0`
+- `mailflow_unknown_delivery_messages > 0`
+- `/ready` returns HTTP 503
 
 `GET /api/v1/unsubscribe?token=...` displays a confirmation and has no side effects.
 RFC 8058 clients submit `POST` to the URL with form body
@@ -109,6 +142,13 @@ RFC 8058 clients submit `POST` to the URL with form body
 is revoked. Tokens expire after one year. Hard bounces and complaints suppress the
 address globally; three consecutive soft bounces also suppress it, while a delivery
 event resets that streak.
+
+When an erased recipient already has a suppression, MailFlow replaces its email with
+a keyed HMAC digest using `SUPPRESSION_HASH_SECRET`. This keeps the address out of the
+suppression table while preventing an accidental reimport or send. Keep the same
+secret backed up and stable; rotating it requires a planned migration. The digest is
+pseudonymous data, not a legal determination that the record is anonymous. Confirm
+the retention policy with qualified privacy counsel.
 
 Active campaigns can be paused, resumed, or cancelled with
 `POST /api/v1/campaigns/{campaign_id}/pause`, `/resume`, and `/cancel`. Cancelling
@@ -119,7 +159,8 @@ The worker enforces Redis-backed per-provider and per-destination-domain rate li
 per second and per UTC day. Temporary SMTP failures use persisted exponential backoff
 (two seconds initially, capped at one hour) for up to five total attempts; permanent
 failures and exhausted retries are stored in the `dead_letters` table. A periodic
-recovery task requeues messages left in `processing` after a worker crash. Optional
+recovery task safely retries stale Resend messages using the same provider key; other
+providers' stale messages are marked `unknown` to avoid a possible duplicate. Optional
 warm-up limits are controlled by `WARMUP_ENABLED`, `WARMUP_DAILY_LIMIT`, and
 `WARMUP_DOMAIN_DAILY_LIMIT`. Daily bounce and complaint thresholds pause active
 promotional campaigns and emit a critical operator log.
@@ -171,10 +212,12 @@ tests do not claim real-provider delivery or inbox placement.
 events/dead letters by the daily worker task. Its default `0` disables automatic
 purging. Recipient and consent records are retained until explicitly erased through
 the operations-only `DELETE /api/v1/recipients/{recipient_id}` endpoint, which removes
-the recipient's messages, events, consent records, schedules, and matching suppression
-entry in one database transaction. A successful erasure returns `204`; unknown IDs
-return `404`. Because erasure also removes the suppression entry, do not re-import an
-erased address unless you have a valid reason and legal basis to contact it.
+the recipient's messages, events, consent records, and schedules in one database
+transaction. Existing suppression entries are retained as keyed HMAC digests so the
+erased address cannot be accidentally re-imported or contacted. A successful erasure
+returns `204`; unknown IDs return `404`. Configure and preserve
+`SUPPRESSION_HASH_SECRET`; the digest is pseudonymous data, and the retention policy
+still requires privacy-counsel review.
 
 ## Run tests
 

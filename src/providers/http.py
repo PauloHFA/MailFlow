@@ -10,6 +10,7 @@ from src.providers.base import (
     EmailAttachment,
     EmailPayload,
     EmailSendResult,
+    ProviderAmbiguousError,
     ProviderPermanentError,
     ProviderTransientError,
 )
@@ -33,6 +34,7 @@ _MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024
 class HttpEmailProvider:
     name: str
     endpoint: str
+    supports_idempotency = False
 
     def __init__(
         self,
@@ -116,11 +118,28 @@ class HttpEmailProvider:
                     headers=self._headers(payload),
                 )
         except httpx.RequestError as error:
-            raise ProviderTransientError("Email provider request failed.") from error
+            if isinstance(
+                error,
+                (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout),
+            ):
+                raise ProviderTransientError("Email provider connection failed.") from error
+            if self.supports_idempotency:
+                raise ProviderTransientError("Email provider request failed.") from error
+            raise ProviderAmbiguousError(
+                "Provider outcome is unknown; automatic retry was stopped."
+            ) from error
 
-        if response.status_code == 429 or response.status_code == 408 or response.status_code >= 500:
+        if response.status_code == 429:
             raise ProviderTransientError(
                 f"Email provider returned transient HTTP {response.status_code}."
+            )
+        if response.status_code == 408 or response.status_code >= 500:
+            if self.supports_idempotency:
+                raise ProviderTransientError(
+                    f"Email provider returned transient HTTP {response.status_code}."
+                )
+            raise ProviderAmbiguousError(
+                f"Provider returned HTTP {response.status_code}; automatic retry was stopped."
             )
         if not 200 <= response.status_code < 300:
             raise ProviderPermanentError(

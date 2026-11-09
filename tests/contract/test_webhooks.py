@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import hmac
 import json
@@ -27,6 +28,10 @@ from src.db.models import (
 from src.suppression.unsubscribe import create_unsubscribe_token
 
 WEBHOOK_SECRET = "test-webhook-signing-secret-that-is-long-enough"
+RESEND_WEBHOOK_SECRET = "whsec_" + base64.b64encode(
+    b"resend-webhook-signing-secret-for-tests"
+).decode("ascii")
+BREVO_WEBHOOK_TOKEN = "test-brevo-webhook-token-with-32-bytes"
 
 
 @pytest.fixture
@@ -49,6 +54,8 @@ def webhook_client() -> Iterator[tuple[TestClient, sessionmaker[Session], str, s
         app_env="test",
         test_recipient_allowlist="qa@example.com",
         webhook_signing_secret=WEBHOOK_SECRET,
+        resend_webhook_secret=RESEND_WEBHOOK_SECRET,
+        brevo_webhook_token=BREVO_WEBHOOK_TOKEN,
         unsubscribe_signing_secret="test-unsubscribe-signing-secret-that-is-long-enough",
         unsubscribe_base_url="https://mailflow.example/api/v1/unsubscribe",
     )
@@ -82,6 +89,7 @@ def _seed_message(factory: sessionmaker[Session]) -> tuple[str, str]:
             status=MessageStatus.SENT.value,
             message_type="transactional",
             variables={},
+            provider_message_id="resend-provider-message",
             sent_at=datetime.now(timezone.utc),
         )
         session.add(message)
@@ -125,6 +133,20 @@ def _send_event(
         content=body,
         headers=_signed_headers(body),
     )
+
+
+def _resend_headers(body: bytes, event_id: str) -> dict[str, str]:
+    timestamp = str(int(datetime.now(timezone.utc).timestamp()))
+    secret = base64.b64decode(RESEND_WEBHOOK_SECRET.removeprefix("whsec_"))
+    signed_content = event_id.encode() + b"." + timestamp.encode() + b"." + body
+    digest = base64.b64encode(
+        hmac.new(secret, signed_content, hashlib.sha256).digest()
+    ).decode("ascii")
+    return {
+        "svix-id": event_id,
+        "svix-timestamp": timestamp,
+        "svix-signature": f"v1,{digest}",
+    }
 
 
 def test_webhook_rejects_bad_and_expired_signatures(
@@ -231,6 +253,80 @@ def test_three_consecutive_soft_bounces_suppress_recipient(
     assert recipient is not None
     assert recipient.status == "suppressed"
     assert len(suppressions) == 1
+
+
+def test_resend_webhook_verifies_svix_signature_and_deduplicates(
+    webhook_client: tuple[TestClient, sessionmaker[Session], str, str],
+) -> None:
+    client, factory, recipient_id, _ = webhook_client
+    body = json.dumps(
+        {
+            "type": "email.bounced",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "data": {"email_id": "resend-provider-message"},
+        },
+        separators=(",", ":"),
+    ).encode()
+    headers = _resend_headers(body, "msg_resend_test_1")
+
+    first = client.post("/api/v1/webhooks/resend", content=body, headers=headers)
+    replay = client.post("/api/v1/webhooks/resend", content=body, headers=headers)
+    invalid = client.post(
+        "/api/v1/webhooks/resend",
+        content=body,
+        headers={**headers, "svix-signature": "v1," + "0" * 44},
+    )
+
+    assert first.status_code == 202
+    assert first.json()["duplicate"] is False
+    assert replay.status_code == 202
+    assert replay.json()["duplicate"] is True
+    assert invalid.status_code == 401
+    with factory() as session:
+        recipient = session.get(Recipient, recipient_id)
+        assert recipient is not None
+        assert recipient.status == "suppressed"
+
+
+def test_brevo_webhook_authenticates_native_payload_and_suppresses_unsubscribe(
+    webhook_client: tuple[TestClient, sessionmaker[Session], str, str],
+) -> None:
+    client, factory, recipient_id, message_id = webhook_client
+    body = json.dumps(
+        {
+            "event": "unsubscribed",
+            "id": 29,
+            "message-id": "brevo-provider-message",
+            "ts_event": int(datetime.now(timezone.utc).timestamp()),
+            "X-Mailin-custom": message_id,
+        },
+        separators=(",", ":"),
+    ).encode()
+
+    first = client.post(
+        "/api/v1/webhooks/brevo",
+        content=body,
+        headers={"X-MailFlow-Brevo-Token": BREVO_WEBHOOK_TOKEN},
+    )
+    replay = client.post(
+        "/api/v1/webhooks/brevo",
+        content=body,
+        headers={"X-MailFlow-Brevo-Token": BREVO_WEBHOOK_TOKEN},
+    )
+    invalid = client.post("/api/v1/webhooks/brevo", content=body)
+
+    assert first.status_code == 202
+    assert first.json()["duplicate"] is False
+    assert replay.status_code == 202
+    assert replay.json()["duplicate"] is True
+    assert invalid.status_code == 401
+    with factory() as session:
+        recipient = session.get(Recipient, recipient_id)
+        suppression = session.scalar(select(Suppression))
+        assert recipient is not None
+        assert recipient.status == "suppressed"
+        assert suppression is not None
+        assert suppression.reason == "unsubscribed"
 
 
 def test_delivery_breaks_soft_bounce_streak_and_complaint_is_global_suppression(

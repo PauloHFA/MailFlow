@@ -16,6 +16,7 @@ class EmailPayload:
     subject: str
     html_body: str
     text_body: str
+    idempotency_key: str | None = None
     headers: dict[str, str] = field(default_factory=dict)
     attachments: tuple[EmailAttachment, ...] = ()
 
@@ -33,6 +34,10 @@ class EmailProvider(Protocol):
 
 class ProviderTransientError(ConnectionError):
     """A provider failure that is safe to retry."""
+
+
+class ProviderAmbiguousError(ConnectionError):
+    """The provider may have accepted the message; automatic retries are unsafe."""
 
 
 class ProviderPermanentError(ValueError):

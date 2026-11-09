@@ -5,10 +5,12 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from src.api.dependencies import get_db, require_operations_access
+from src.api.dependencies import get_db, get_settings, require_operations_access
+from src.config import Settings
 from src.consent.import_csv import CSVImportError, parse_recipients_csv
 from src.db.models import Consent, Recipient, RecipientStatus
 from src.privacy.retention import erase_recipient_data
+from src.privacy.suppression import is_suppressed
 
 router = APIRouter(prefix="/api/v1/recipients", tags=["recipients"])
 MAX_CSV_BYTES = 5 * 1024 * 1024
@@ -42,6 +44,7 @@ class ConsentCreate(BaseModel):
 async def import_recipients(
     file: UploadFile = File(...),
     session: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ) -> dict[str, object]:
     content = await file.read(MAX_CSV_BYTES + 1)
     if len(content) > MAX_CSV_BYTES:
@@ -56,7 +59,24 @@ async def import_recipients(
         raise HTTPException(status_code=422, detail=str(error)) from error
 
     imported_response: list[dict[str, str]] = []
+    rejected = [
+        {"row": row.row, "reason": row.reason}
+        for row in result.rejected
+    ]
     for imported in result.imported:
+        try:
+            suppressed = is_suppressed(
+                session,
+                imported.email,
+                settings.suppression_hash_secret.get_secret_value(),
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+        if suppressed:
+            rejected.append(
+                {"row": imported.row_number, "reason": "Recipient is suppressed."}
+            )
+            continue
         recipient = Recipient(
             email=imported.email,
             name=imported.name,
@@ -78,10 +98,6 @@ async def import_recipients(
             )
 
     session.commit()
-    rejected = [
-        {"row": row.row, "reason": row.reason}
-        for row in result.rejected
-    ]
     return {
         "imported_count": len(imported_response),
         "duplicate_count": result.duplicates,
@@ -158,8 +174,17 @@ def revoke_consent(
 def erase_recipient(
     recipient_id: str,
     session: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ) -> Response:
-    if not erase_recipient_data(session, recipient_id):
+    try:
+        erased = erase_recipient_data(
+            session,
+            recipient_id,
+            suppression_hash_secret=settings.suppression_hash_secret.get_secret_value(),
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    if not erased:
         raise HTTPException(status_code=404, detail="Recipient not found.")
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

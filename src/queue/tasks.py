@@ -20,9 +20,12 @@ from src.db.models import (
     MessageType,
     Recipient,
     RecipientStatus,
-    Suppression,
 )
-from src.providers.base import EmailPayload, EmailProvider
+from src.providers.base import (
+    EmailPayload,
+    EmailProvider,
+    ProviderAmbiguousError,
+)
 from src.providers.factory import build_email_provider, rate_limit_provider_name
 from src.providers.headers import promotional_unsubscribe_headers
 from src.queue.rate_limit import RateLimitExceeded, RedisRateLimiter
@@ -30,8 +33,10 @@ from src.queue.retries import dead_letter_message, schedule_retry
 from src.queue.warmup import handle_reputation_signal, reserve_warmup_capacity
 from src.rendering.templates import TemplateValidationError, render_template
 from src.suppression.unsubscribe import create_unsubscribe_token
+from src.privacy.suppression import is_suppressed
 
 logger = logging.getLogger("mailflow.worker")
+_PROVIDER_IDEMPOTENCY_WINDOW = timedelta(hours=24)
 
 
 class RateLimiter(Protocol):
@@ -60,6 +65,33 @@ def _permanent_failure(
             message_id=message.id,
             event_type="failed",
             payload={"reason": "permanent_failure"},
+        )
+    )
+    session.commit()
+
+
+def _unknown_delivery_outcome(
+    session: Session,
+    message: Message,
+    reason: str,
+) -> None:
+    message.status = MessageStatus.UNKNOWN.value
+    message.error = reason
+    message.next_attempt_at = None
+    message.processing_started_at = None
+    message.enqueued_at = None
+    session.add(
+        MessageEvent(
+            message_id=message.id,
+            event_type="delivery_unknown",
+            payload={"reason": "provider_outcome_ambiguous"},
+        )
+    )
+    session.add(
+        MessageEvent(
+            message_id=message.id,
+            event_type="provider_failure",
+            payload={"reason": "provider_outcome_ambiguous"},
         )
     )
     session.commit()
@@ -166,10 +198,17 @@ def process_persisted_message(
             session.commit()
             return
 
-        if (
-            recipient.status != RecipientStatus.ACTIVE.value
-            or session.scalar(select(Suppression.id).where(Suppression.email == recipient.email))
-        ):
+        try:
+            is_recipient_suppressed = is_suppressed(
+                session,
+                recipient.email,
+                settings.suppression_hash_secret.get_secret_value(),
+            )
+        except ValueError as error:
+            _permanent_failure(session, message, str(error))
+            logger.error("suppression_hash_secret_missing", extra={"message_id": message.id})
+            return
+        if recipient.status != RecipientStatus.ACTIVE.value or is_recipient_suppressed:
             _permanent_failure(session, message, "Recipient is suppressed.")
             return
 
@@ -291,6 +330,30 @@ def process_persisted_message(
         session.refresh(message)
 
         current_provider = provider or build_email_provider(settings)
+        if getattr(current_provider, "supports_idempotency", False) and message.attempts > 1:
+            previous_retry_at = session.scalar(
+                select(MessageEvent.occurred_at)
+                .where(
+                    MessageEvent.message_id == message.id,
+                    MessageEvent.event_type == "retry_scheduled",
+                )
+                .order_by(MessageEvent.occurred_at.desc())
+                .limit(1)
+            )
+            if previous_retry_at is not None:
+                if previous_retry_at.tzinfo is None:
+                    previous_retry_at = previous_retry_at.replace(tzinfo=timezone.utc)
+                if current_time - previous_retry_at.astimezone(timezone.utc) > _PROVIDER_IDEMPOTENCY_WINDOW:
+                    _unknown_delivery_outcome(
+                        session,
+                        message,
+                        "Provider idempotency key may have expired; automatic retry was stopped.",
+                    )
+                    logger.critical(
+                        "message_idempotency_window_expired",
+                        extra={"message_id": message.id, "attempt": message.attempts},
+                    )
+                    return
         try:
             result = current_provider.send(
                 EmailPayload(
@@ -299,11 +362,27 @@ def process_persisted_message(
                     subject=rendered.subject,
                     html_body=rendered.html_body,
                     text_body=rendered.text_body,
+                    idempotency_key=message.id,
                     headers=unsubscribe_headers,
                 )
             )
+        except ProviderAmbiguousError as error:
+            _unknown_delivery_outcome(session, message, str(error))
+            logger.critical(
+                "message_delivery_outcome_unknown",
+                extra={"message_id": message.id, "attempt": message.attempts},
+            )
+            return
         except (OSError, TimeoutError, ConnectionError, smtplib.SMTPException, ValueError) as error:
             transient, reason = _transient_failure(error)
+            session.add(
+                MessageEvent(
+                    message_id=message.id,
+                    event_type="provider_failure",
+                    provider=settings.email_provider,
+                    payload={"reason": "transient" if transient else "permanent"},
+                )
+            )
             if transient:
                 retrying = schedule_retry(
                     message,

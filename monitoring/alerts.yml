@@ -1,0 +1,65 @@
+groups:
+  - name: mailflow-operations
+    rules:
+      - alert: MailFlowApiUnavailable
+        expr: up{job="mailflow-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: MailFlow API metrics endpoint is unavailable
+          description: Prometheus has been unable to scrape the MailFlow API for at least one minute.
+
+      - alert: MailFlowDatabaseNotReady
+        expr: mailflow_dependency_ready{dependency="database"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: MailFlow database readiness check is failing
+          description: The latest MailFlow readiness check could not reach PostgreSQL.
+
+      - alert: MailFlowRedisNotReady
+        expr: mailflow_dependency_ready{dependency="redis"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: MailFlow Redis readiness check is failing
+          description: The latest MailFlow readiness check could not reach Redis.
+
+      - alert: MailFlowQueueBacklog
+        expr: mailflow_oldest_pending_age_seconds > 300
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: MailFlow queue has an aging backlog
+          description: The oldest queued or retrying message has been waiting over five minutes.
+
+      - alert: MailFlowProviderFailures
+        expr: mailflow_provider_failures_last_hour > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: MailFlow recorded provider delivery failures
+          description: At least one provider failure was recorded during the last hour.
+
+      - alert: MailFlowDeadLetters
+        expr: mailflow_dead_letters > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: MailFlow has messages in the dead-letter queue
+          description: Inspect failed messages and resolve the provider or message issue.
+
+      - alert: MailFlowUnknownDeliveryOutcome
+        expr: mailflow_unknown_delivery_messages > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: MailFlow has messages with an unknown delivery outcome
+          description: Reconcile these messages against the provider before manually resending.

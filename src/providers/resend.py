@@ -10,6 +10,7 @@ from src.providers.http import HttpEmailProvider
 class ResendEmailProvider(HttpEmailProvider):
     name = "resend"
     endpoint = "https://api.resend.com/emails"
+    supports_idempotency = True
 
     def __init__(
         self,
@@ -38,6 +39,13 @@ class ResendEmailProvider(HttpEmailProvider):
         if payload.attachments:
             body["attachments"] = self._attachments(payload.attachments)
         return body
+
+    def _headers(self, payload: EmailPayload) -> dict[str, str]:
+        headers = super()._headers(payload)
+        if not payload.idempotency_key:
+            raise ValueError("Resend sends require a stable idempotency key.")
+        headers["Idempotency-Key"] = payload.idempotency_key
+        return headers
 
     def _message_id(self, response_body: object) -> str:
         if isinstance(response_body, dict) and isinstance(response_body.get("id"), str):

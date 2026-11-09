@@ -24,10 +24,13 @@ from src.db.models import (
     Suppression,
 )
 from src.privacy.retention import purge_expired_messages
+from src.privacy.suppression import is_suppressed
+from src.privacy.suppression import suppression_digest
 from src.providers.base import EmailPayload, EmailSendResult
 from src.scheduler.reports import send_daily_delivery_report
 
 OPERATIONS_TOKEN = "test-operations-token-with-at-least-32-bytes"
+SUPPRESSION_HASH_SECRET = "test-suppression-hash-secret-with-32-bytes"
 
 
 @pytest.fixture
@@ -50,6 +53,7 @@ def operations_client() -> Iterator[tuple[TestClient, sessionmaker[Session], str
         app_env="test",
         test_recipient_allowlist="qa@example.com",
         operations_api_token=OPERATIONS_TOKEN,
+        suppression_hash_secret=SUPPRESSION_HASH_SECRET,
     )
     with factory() as session:
         recipient = Recipient(email="qa@example.com")
@@ -172,6 +176,25 @@ def test_delivery_metrics_return_aggregates_without_recipient_data(
     assert "qa@example.com" not in response.text
 
 
+def test_operations_metrics_report_queue_and_provider_health(
+    operations_client: tuple[TestClient, sessionmaker[Session], str, str],
+) -> None:
+    client, _, _, _ = operations_client
+
+    response = client.get(
+        "/api/v1/metrics/operations",
+        headers=_auth_headers(),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["pending_messages"] == 0
+    assert body["retrying_messages"] == 0
+    assert body["unknown_delivery_messages"] == 0
+    assert body["dead_letters"] == 0
+    assert body["oldest_pending_age_seconds"] == 0
+
+
 def test_csv_exports_include_sends_and_consent_only_for_authorized_operator(
     operations_client: tuple[TestClient, sessionmaker[Session], str, str],
 ) -> None:
@@ -244,6 +267,7 @@ def test_recipient_erasure_requires_auth_and_removes_linked_personal_data(
         recipient_id = recipient.id
         template = session.get(EmailTemplate, message.template_id)
         assert template is not None
+        template_id = template.id
         campaign = Campaign(
             name="erase-test",
             template_id=template.id,
@@ -283,7 +307,25 @@ def test_recipient_erasure_requires_auth_and_removes_linked_personal_data(
         assert session.scalar(select(MessageEvent.id)) is None
         assert session.scalar(select(CampaignSchedule.id)) is None
         assert session.scalar(select(DeadLetter.id)) is None
-        assert session.scalar(select(Suppression.id)) is None
+        suppression = session.scalar(select(Suppression))
+        assert suppression is not None
+        assert suppression.email == suppression_digest(
+            "qa@example.com",
+            SUPPRESSION_HASH_SECRET,
+        )
+        assert "qa@example.com" not in suppression.email
+        assert is_suppressed(session, "qa@example.com", SUPPRESSION_HASH_SECRET)
+
+    blocked_reimport_send = client.post(
+        "/api/v1/messages",
+        headers={"Idempotency-Key": "erased-recipient-retry"},
+        json={
+            "recipient": "qa@example.com",
+            "template_id": template_id,
+            "variables": {},
+        },
+    )
+    assert blocked_reimport_send.status_code == 422
 
     missing = client.delete(
         f"/api/v1/recipients/{recipient_id}",

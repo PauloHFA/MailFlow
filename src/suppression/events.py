@@ -24,6 +24,16 @@ def process_provider_event(
 ) -> bool:
     if not provider or len(provider) > 40:
         raise ValueError("provider must contain between 1 and 40 characters.")
+    if event.event_type not in {
+        "delivered",
+        "hard_bounce",
+        "soft_bounce",
+        "complaint",
+        "unsubscribed",
+        "opened",
+        "clicked",
+    }:
+        raise ValueError("provider event type is not supported.")
     message = session.get(Message, event.message_id)
     if message is None:
         raise UnknownWebhookMessageError("Webhook message was not found.")

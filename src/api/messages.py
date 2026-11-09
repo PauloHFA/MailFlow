@@ -22,10 +22,10 @@ from src.db.models import (
     MessageType,
     Recipient,
     RecipientStatus,
-    Suppression,
     MessageEvent,
 )
 from src.rendering.templates import TemplateValidationError, render_template
+from src.privacy.suppression import is_suppressed
 
 router = APIRouter(prefix="/api/v1/messages", tags=["messages"])
 logger = logging.getLogger("mailflow.messages")
@@ -143,9 +143,15 @@ def create_message(
     except TemplateValidationError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
 
-    if session.scalar(
-        select(Suppression.id).where(Suppression.email == normalized_recipient)
-    ) or session.scalar(
+    try:
+        suppressed = is_suppressed(
+            session,
+            normalized_recipient,
+            settings.suppression_hash_secret.get_secret_value(),
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    if suppressed or session.scalar(
         select(Recipient.id).where(
             Recipient.email == normalized_recipient,
             Recipient.status == RecipientStatus.SUPPRESSED.value,

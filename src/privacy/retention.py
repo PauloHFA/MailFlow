@@ -14,6 +14,7 @@ from src.db.models import (
     Recipient,
     Suppression,
 )
+from src.privacy.suppression import suppression_digest
 
 logger = logging.getLogger("mailflow.privacy")
 _PURGE_BATCH_SIZE = 1000
@@ -58,10 +59,23 @@ def purge_expired_messages(
     return int(deleted_count or 0)
 
 
-def erase_recipient_data(session: Session, recipient_id: str) -> bool:
+def erase_recipient_data(
+    session: Session,
+    recipient_id: str,
+    *,
+    suppression_hash_secret: str,
+) -> bool:
     recipient = session.get(Recipient, recipient_id)
     if recipient is None:
         return False
+
+    suppression_rows = session.scalars(
+        select(Suppression).where(Suppression.email == recipient.email.casefold())
+    ).all()
+    if suppression_rows and len(suppression_hash_secret.encode("utf-8")) < 32:
+        raise ValueError(
+            "SUPPRESSION_HASH_SECRET must contain at least 32 bytes to erase suppressed recipients."
+        )
 
     message_ids = session.scalars(
         select(Message.id).where(Message.recipient_id == recipient_id)
@@ -81,6 +95,10 @@ def erase_recipient_data(session: Session, recipient_id: str) -> bool:
         )
     )
     session.execute(delete(Consent).where(Consent.recipient_id == recipient_id))
-    session.execute(delete(Suppression).where(Suppression.email == recipient.email))
+    for suppression in suppression_rows:
+        suppression.email = suppression_digest(
+            recipient.email,
+            suppression_hash_secret,
+        )
     session.delete(recipient)
     return True

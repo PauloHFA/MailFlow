@@ -219,6 +219,65 @@ returns `204`; unknown IDs return `404`. Configure and preserve
 `SUPPRESSION_HASH_SECRET`; the digest is pseudonymous data, and the retention policy
 still requires privacy-counsel review.
 
+## Implementation status and next steps
+
+The following reliability and operations improvements are implemented:
+
+- **Duplicate-send protection:** Resend requests use the stable MailFlow message ID
+  as `Idempotency-Key`, matching Resend's 24-hour idempotency window. Brevo has no
+  documented request-level idempotency contract, so ambiguous results are recorded as
+  `unknown` and are not automatically retried. The migration
+  `0005_delivery_unknown` adds this delivery state.
+- **Provider webhooks:** Native Resend and Brevo endpoints validate their respective
+  authentication mechanisms (Svix signature and configured shared token), normalize
+  provider event payloads, and deduplicate events. The generic signed webhook remains
+  available separately.
+- **Suppression after erasure:** When a recipient with an existing suppression is
+  erased, its address in the suppression record is replaced with a keyed HMAC digest.
+  Imports and sends check that digest to prevent accidental recontact. Configure the
+  same stable `SUPPRESSION_HASH_SECRET` for the API and worker; this is
+  pseudonymization, not a legal determination of anonymization.
+- **Readiness and operations metrics:** `/health` is liveness-only; `/ready` checks
+  PostgreSQL and Redis. `/metrics` exposes operational gauges used by Prometheus,
+  while `/api/v1/metrics/operations` provides authenticated operational details.
+- **Prometheus alert rules:** Docker Compose starts Prometheus, scrapes the API, and
+  loads `monitoring/alerts.yml`. The rules cover API scrape availability, database
+  and Redis readiness, queue age, provider failures, dead letters, and unknown
+  delivery outcomes. Prometheus evaluates and displays firing alerts; notifications
+  require an operator-configured Alertmanager receiver.
+- **Automated verification and documentation:** Provider, webhook, retry, suppression,
+  readiness, metrics, and migration behavior has unit, contract, and integration
+  coverage. The provider staging checklist is in
+  [`docs/provider-evaluation.md`](docs/provider-evaluation.md).
+
+The local changes were verified with `python -m pytest -q` (127 passed),
+`python -m pytest -q -m performance` (1 passed),
+`python -m compileall -q src tests migrations`, `git diff --check`,
+`docker compose config --quiet`, and parsing the
+Prometheus YAML files. Prometheus itself could not be started or checked with
+`promtool` during that run because Docker Desktop was paused.
+
+### Remaining steps
+
+1. **Run authenticated staging tests for Resend and Brevo.** Supply provider
+   credentials through an untracked `.env` or secret manager, verify the sender
+   domain's SPF/DKIM/DMARC, restrict recipients to test inboxes, and complete the
+   checks in [`docs/provider-evaluation.md`](docs/provider-evaluation.md). Confirm
+   actual delivery, inbox placement, rendering, webhook authentication, bounce and
+   complaint processing, unsubscribe behavior, and provider limits. Do not send to
+   non-test recipients until these checks pass.
+2. **Configure alert notifications for the deployment.** Choose the operational
+   notification destination and configure an Alertmanager receiver and routing
+   policy. The repository provides Prometheus scrape and alert rules, but does not
+   include a destination-specific receiver configuration.
+3. **Approve the retention policy with privacy counsel.** Decide whether and how
+   long pseudonymous suppression digests should be retained. Preserve and back up
+   `SUPPRESSION_HASH_SECRET`; rotating it requires a planned migration because old
+   digests will no longer match.
+4. **Validate the monitoring stack with Docker available.** Start the Compose
+   services, confirm Prometheus reports the `mailflow-api` target as healthy, and
+   validate the rules with `promtool` if available.
+
 ## Run tests
 
 ```powershell
